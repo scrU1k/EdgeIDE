@@ -1,7 +1,7 @@
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine } from '@codemirror/view';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, EditorSelection } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo, selectAll, toggleComment } from '@codemirror/commands';
-import { search, SearchQuery, setSearchQuery, findNext, findPrevious, replaceNext, replaceAll, highlightSelectionMatches } from '@codemirror/search';
+import { search, SearchQuery, setSearchQuery, findNext, findPrevious, replaceNext, replaceAll, highlightSelectionMatches, selectNextOccurrence, selectSelectionMatches } from '@codemirror/search';
 import { bracketMatching, foldGutter, indentOnInput } from '@codemirror/language';
 import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { python } from '@codemirror/lang-python';
@@ -20,8 +20,10 @@ export class CodeEditor {
   private fontCompartment = new Compartment();
   private wordWrapCompartment = new Compartment();
   private isWordWrap: boolean = false;
+  private isMultiCursorMode: boolean = false;
   private currentLanguage: SupportedLanguage = 'plaintext';
   private onChangeCallback: ((content: string) => void) | null = null;
+  private onSelectionChangeCallback: ((cursorCount: number) => void) | null = null;
 
   public init(
     container: HTMLElement, 
@@ -36,6 +38,7 @@ export class CodeEditor {
     const startState = EditorState.create({
       doc: initialContent,
       extensions: [
+        EditorState.allowMultipleSelections.of(true),
         lineNumbers(),
         highlightActiveLineGutter(),
         highlightActiveLine(),
@@ -58,9 +61,40 @@ export class CodeEditor {
           ...completionKeymap,
           indentWithTab
         ]),
+        EditorView.domEventHandlers({
+          pointerdown: (event, view) => {
+            if (this.isMultiCursorMode) {
+              const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              if (pos !== null) {
+                event.preventDefault();
+                const currentSel = view.state.selection;
+                const exists = currentSel.ranges.some(r => r.from === pos && r.empty);
+                if (exists && currentSel.ranges.length > 1) {
+                  const newRanges = currentSel.ranges.filter(r => r.from !== pos);
+                  view.dispatch({
+                    selection: EditorSelection.create(newRanges, 0)
+                  });
+                } else {
+                  const newRanges = [...currentSel.ranges, EditorSelection.cursor(pos)];
+                  view.dispatch({
+                    selection: EditorSelection.create(newRanges, newRanges.length - 1)
+                  });
+                }
+                if (this.onSelectionChangeCallback) {
+                  this.onSelectionChangeCallback(view.state.selection.ranges.length);
+                }
+                return true;
+              }
+            }
+            return false;
+          }
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && this.onChangeCallback) {
             this.onChangeCallback(update.state.doc.toString());
+          }
+          if (update.selectionSet && this.onSelectionChangeCallback) {
+            this.onSelectionChangeCallback(update.state.selection.ranges.length);
           }
         }),
         EditorView.theme({
@@ -177,7 +211,7 @@ export class CodeEditor {
 
     this.view.dispatch({
       changes,
-      selection: { anchor: newSelection[0].anchor, head: newSelection[0].head }
+      selection: EditorSelection.create(newSelection.map(s => EditorSelection.range(s.anchor, s.head)), 0)
     });
 
     this.view.focus();
@@ -242,6 +276,45 @@ export class CodeEditor {
     return true;
   }
 
+  // =========================================================================
+  // Multi-Cursor Methods
+  // =========================================================================
+  public selectNextMatch(): void {
+    if (!this.view) return;
+    selectNextOccurrence(this.view);
+    this.view.focus();
+  }
+
+  public selectAllMatches(): void {
+    if (!this.view) return;
+    selectSelectionMatches(this.view);
+    this.view.focus();
+  }
+
+  public setMultiCursorMode(enabled: boolean): void {
+    this.isMultiCursorMode = enabled;
+  }
+
+  public getMultiCursorMode(): boolean {
+    return this.isMultiCursorMode;
+  }
+
+  public resetCursors(): void {
+    if (!this.view) return;
+    const mainHead = this.view.state.selection.main.head;
+    this.view.dispatch({
+      selection: EditorSelection.cursor(mainHead)
+    });
+    this.isMultiCursorMode = false;
+  }
+
+  public onSelectionChange(cb: (cursorCount: number) => void): void {
+    this.onSelectionChangeCallback = cb;
+  }
+
+  // =========================================================================
+  // Format Document
+  // =========================================================================
   public formatDocument(): void {
     if (!this.view) return;
     const raw = this.view.state.doc.toString();
@@ -291,9 +364,7 @@ export class CodeEditor {
     const lines = raw.split('\n');
     const result: string[] = [];
 
-    // Continuation keywords that align back with opening block
     const CONTINUATION_KW = /^(elif\s|else:|else\s|except(\s|:)|finally:)/;
-    // Statements that terminate a block
     const BLOCK_ENDERS = /^(return|break|continue|pass|raise)(\s|$)/;
 
     let indentLevel = 0;
@@ -301,7 +372,6 @@ export class CodeEditor {
     for (const line of lines) {
       const stripped = line.trim();
 
-      // Blank lines — keep single blank
       if (!stripped) {
         if (result.length > 0 && result[result.length - 1].trim() !== '') {
           result.push('');
@@ -309,15 +379,12 @@ export class CodeEditor {
         continue;
       }
 
-      // elif / else / except / finally align back 1 level
       if (CONTINUATION_KW.test(stripped)) {
         indentLevel = Math.max(0, indentLevel - 1);
       }
 
-      // Emit line
       result.push('    '.repeat(indentLevel) + stripped);
 
-      // Line opens a new block (ends with ':' and is not comment)
       if (stripped.endsWith(':') && !stripped.startsWith('#')) {
         indentLevel++;
       } else if (BLOCK_ENDERS.test(stripped)) {
