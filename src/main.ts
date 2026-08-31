@@ -98,8 +98,8 @@ class MobileApp {
     // 7. Mobile Keyboard Accessory Bar
     this.accessoryBar = new AccessoryBar(this.appRoot, this.editor);
 
-    // 8. Output Panel (Console + Web Preview with drag resize)
-    this.outputPanel = new OutputPanel(document.body, this.vfs);
+    // 8. Output Panel (Console + Terminal + Web Preview with drag resize)
+    this.outputPanel = new OutputPanel(document.body, this.vfs, this.runtimeManager.getPythonRuntime());
   }
 
   private switchFile(fileId: string): void {

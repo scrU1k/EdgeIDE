@@ -38,6 +38,10 @@ export class RuntimeManager {
     return this.runtimes.find(r => r.supportedLanguages.includes(lang)) || null;
   }
 
+  public getPythonRuntime(): PythonRuntime {
+    return this.runtimes.find(r => r.id === 'pyodide') as PythonRuntime;
+  }
+
   public async executeActiveFile(
     vfs: VirtualFileSystem,
     onOutput: (msg: ConsoleMessage) => void

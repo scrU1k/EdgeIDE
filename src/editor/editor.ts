@@ -12,6 +12,7 @@ import { cpp } from '@codemirror/lang-cpp';
 import { SupportedLanguage } from '../vfs/types';
 import { AppSettings } from '../settings/settings-store';
 import { getCodeThemeExtensions } from './themes';
+import { getLanguageCompletions } from './autocomplete';
 
 export class CodeEditor {
   private view: EditorView | null = null;
@@ -153,15 +154,27 @@ export class CodeEditor {
   }
 
   private getLanguageExtension(lang: SupportedLanguage) {
-    switch (lang) {
-      case 'python': return python();
-      case 'javascript': return javascript({ typescript: false });
-      case 'typescript': return javascript({ typescript: true });
-      case 'html': return html();
-      case 'css': return css();
-      case 'cpp': return cpp();
-      default: return [];
-    }
+    const langExt = (() => {
+      switch (lang) {
+        case 'python': return python();
+        case 'javascript': return javascript({ typescript: false });
+        case 'typescript': return javascript({ typescript: true });
+        case 'html': return html();
+        case 'css': return css();
+        case 'cpp': return cpp();
+        default: return [];
+      }
+    })();
+
+    return [
+      langExt,
+      autocompletion({
+        override: [getLanguageCompletions(lang)],
+        defaultKeymap: true,
+        activateOnTyping: true,
+        icons: true,
+      })
+    ];
   }
 
   public setContent(content: string, language: SupportedLanguage): void {

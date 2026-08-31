@@ -340,6 +340,22 @@ export class VirtualFileSystem {
     return Object.values(this.state.files).filter(f => !f.isFolder);
   }
 
+  public getAllNodes(): VirtualNode[] {
+    return Object.values(this.state.files);
+  }
+
+  public getNodeByPath(path: string): VirtualNode | null {
+    let clean = path.replace(/\\/g, '/').replace(/\/+/g, '/');
+    if (!clean.startsWith('/')) clean = '/' + clean;
+    if (clean.length > 1 && clean.endsWith('/')) clean = clean.slice(0, -1);
+    return Object.values(this.state.files).find(f => f.path === clean) || null;
+  }
+
+  public getFileByPath(path: string): VirtualNode | null {
+    const node = this.getNodeByPath(path);
+    return node && !node.isFolder ? node : null;
+  }
+
   public getChildren(parentId: string | null): VirtualNode[] {
     return Object.values(this.state.files)
       .filter(f => f.parentId === parentId)

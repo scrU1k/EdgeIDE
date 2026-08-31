@@ -131,4 +131,57 @@ export class PythonRuntime implements LanguageRuntime {
       };
     }
   }
+
+  public async pipInstall(packages: string[], onLog: (text: string) => void): Promise<boolean> {
+    try {
+      if (!this.pyodide) {
+        onLog('\x1b[33mInitializing Python WASM environment...\x1b[0m');
+        await this.init((msg) => onLog(`\x1b[90m${msg}\x1b[0m`));
+      }
+      onLog(`\x1b[90mLoading micropip package manager...\x1b[0m`);
+      await this.pyodide.loadPackage('micropip');
+      const micropip = this.pyodide.pyimport('micropip');
+      onLog(`\x1b[36mCollecting ${packages.join(', ')}...\x1b[0m`);
+      await micropip.install(packages);
+      onLog(`\x1b[32mSuccessfully installed ${packages.join(', ')}\x1b[0m`);
+      return true;
+    } catch (e: any) {
+      onLog(`\x1b[31merror: ${e.message || String(e)}\x1b[0m`);
+      return false;
+    }
+  }
+
+  public async pipList(): Promise<string[]> {
+    if (!this.pyodide) await this.init();
+    await this.pyodide.loadPackage('micropip');
+    const micropip = this.pyodide.pyimport('micropip');
+    const list = micropip.list();
+    const jsObj = list.toJs ? list.toJs() : list;
+    return typeof jsObj === 'object' ? Object.keys(jsObj) : [];
+  }
+
+  public async runStreaming(
+    code: string,
+    vfs: VirtualFileSystem,
+    stdout: (text: string) => void,
+    stderr: (text: string) => void
+  ): Promise<any> {
+    if (!this.pyodide) {
+      stdout('Initializing Pyodide...\r\n');
+      await this.init();
+    }
+
+    // Sync VFS files into Pyodide virtual filesystem
+    const allFiles = vfs.getAllFiles();
+    for (const file of allFiles) {
+      try {
+        this.pyodide.FS.writeFile(file.name, file.content, { encoding: 'utf8' });
+      } catch {}
+    }
+
+    this.pyodide.setStdout({ batched: (t: string) => stdout(t + '\r\n') });
+    this.pyodide.setStderr({ batched: (t: string) => stderr(t + '\r\n') });
+
+    return await this.pyodide.runPythonAsync(code);
+  }
 }
