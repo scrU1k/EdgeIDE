@@ -218,6 +218,7 @@ export class OutputPanel {
         terminalBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all shadow-sm';
       }
       terminalContent?.classList.remove('hidden');
+      clearBtn?.classList.remove('hidden');
       setTimeout(() => {
         this.terminalTab?.fit();
         this.terminalTab?.focus();
@@ -355,7 +356,14 @@ export class OutputPanel {
     });
 
     closeOutputBtn?.addEventListener('click', () => this.close());
-    clearConsoleBtn?.addEventListener('click', () => this.clearConsole());
+    clearConsoleBtn?.addEventListener('click', () => {
+      if (this.activeTab === 'terminal') {
+        this.terminalTab?.clear();
+        this.terminalTab?.focus();
+      } else {
+        this.clearConsole();
+      }
+    });
     refreshPreviewBtn?.addEventListener('click', () => this.refreshPreview());
   }
 

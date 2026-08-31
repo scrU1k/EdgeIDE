@@ -83,19 +83,60 @@ export class VirtualShell {
 
     switch (cmd) {
       case 'help':
-        write('\x1b[1;36mEdgeIDE Virtual Shell Commands:\x1b[0m\r\n');
-        write('  \x1b[33mpip install <pkg...>\x1b[0m  Install Python packages via PyPI & micropip\r\n');
-        write('  \x1b[33mpip list\x1b[0m              List installed Python packages\r\n');
-        write('  \x1b[33mpython [file.py]\x1b[0m      Run Python file or enter interactive REPL\r\n');
-        write('  \x1b[33mnode [file.js]\x1b[0m        Run JavaScript file in sandbox\r\n');
-        write('  \x1b[33mgit <command>\x1b[0m         On-device Git (init, status, add, commit, log, branch)\r\n');
-        write('  \x1b[33mls, cd, pwd, cat\x1b[0m      POSIX File Navigation\r\n');
-        write('  \x1b[33mmkdir, touch, rm\x1b[0m      POSIX File Manipulation\r\n');
-        write('  \x1b[33mclear, echo\x1b[0m           Shell Utilities\r\n');
+        write('\x1b[1;35m=====================================================\x1b[0m\r\n');
+        write('\x1b[1;36m             EdgeIDE Virtual Shell Help              \x1b[0m\r\n');
+        write('\x1b[1;35m=====================================================\x1b[0m\r\n\r\n');
+        
+        write('\x1b[1;33m📦 Package Management (Python):\x1b[0m\r\n');
+        write('  \x1b[32mpip install <pkg...>\x1b[0m  Download and install PyPI packages via micropip\r\n');
+        write('  \x1b[32mpip list\x1b[0m              Show all installed packages in virtual env\r\n');
+        write('  \x1b[32mpip --version\x1b[0m         Check pip and micropip versions\r\n\r\n');
+
+        write('\x1b[1;33m🐍 Language Runtimes & REPL:\x1b[0m\r\n');
+        write('  \x1b[32mpython [file.py]\x1b[0m      Run Python file or start interactive REPL (>>>)\r\n');
+        write('  \x1b[32mpython --version\x1b[0m      Check Python WebAssembly version\r\n');
+        write('  \x1b[32mnode [file.js]\x1b[0m        Execute JavaScript file in sandbox\r\n');
+        write('  \x1b[32mnode --version\x1b[0m        Check Node environment version\r\n\r\n');
+
+        write('\x1b[1;33m🌿 On-Device Git:\x1b[0m\r\n');
+        write('  \x1b[32mgit init\x1b[0m              Initialize new Git repository\r\n');
+        write('  \x1b[32mgit status\x1b[0m            Check working tree status (staged, modified, untracked)\r\n');
+        write('  \x1b[32mgit add <file| . >\x1b[0m    Stage file or all changes\r\n');
+        write('  \x1b[32mgit commit -m "msg"\x1b[0m   Commit staged changes with message\r\n');
+        write('  \x1b[32mgit log\x1b[0m               View commit history\r\n');
+        write('  \x1b[32mgit branch\x1b[0m            List local branches\r\n');
+        write('  \x1b[32mgit --version\x1b[0m         Check isomorphic-git engine version\r\n\r\n');
+
+        write('\x1b[1;33m📂 File System Navigation:\x1b[0m\r\n');
+        write('  \x1b[32mls [path]\x1b[0m             List directory contents\r\n');
+        write('  \x1b[32mcd [dir]\x1b[0m              Change current working directory (e.g. cd web-app, cd ..)\r\n');
+        write('  \x1b[32mpwd\x1b[0m                   Print current working directory path\r\n');
+        write('  \x1b[32mcat <file>\x1b[0m            Display file content in terminal\r\n');
+        write('  \x1b[32mmkdir <folder>\x1b[0m        Create a new folder\r\n');
+        write('  \x1b[32mtouch <file>\x1b[0m          Create a new empty file\r\n');
+        write('  \x1b[32mrm [-r] <name>\x1b[0m        Delete file or folder\r\n\r\n');
+
+        write('\x1b[1;33m⚙️ Utilities:\x1b[0m\r\n');
+        write('  \x1b[32mclear\x1b[0m                 Clear terminal screen and scroll buffer\r\n');
+        write('  \x1b[32mversion\x1b[0m               Display EdgeIDE system version and engine specs\r\n');
+        write('  \x1b[32mecho <text>\x1b[0m           Print text to terminal output\r\n');
         break;
 
       case 'clear':
-        write('\x1b[2J\x1b[H');
+      case 'cls':
+        write('\x1b[2J\x1b[3J\x1b[H');
+        break;
+
+      case 'version':
+      case 'edgeide':
+        if (cmdArgs.length === 0 || cmdArgs.includes('-v') || cmdArgs.includes('--version')) {
+          write('\x1b[1;35mEdgeIDE Mobile Studio\x1b[0m \x1b[32mv1.0.0\x1b[0m\r\n');
+          write('  • \x1b[36mCore Engine:\x1b[0m   Capacitor 8.5 on-device hybrid client\r\n');
+          write('  • \x1b[36mPython Engine:\x1b[0m CPython 3.12.7 (Pyodide WebAssembly)\r\n');
+          write('  • \x1b[36mPip Package:\x1b[0m   micropip 0.6.0 (PyPI WASM loader)\r\n');
+          write('  • \x1b[36mGit Engine:\x1b[0m    isomorphic-git 1.25.10 (Client-side Git)\r\n');
+          write('  • \x1b[36mTerminal UI:\x1b[0m   xterm.js 5.5.0 with full ANSI color support\r\n');
+        }
         break;
 
       case 'pwd':
@@ -224,10 +265,15 @@ export class VirtualShell {
       // =====================================================================
       case 'pip': {
         const sub = cmdArgs[0]?.toLowerCase();
+        if (sub === '-v' || sub === '-v' || sub === '--version' || cmdArgs.includes('--version') || cmdArgs.includes('-V')) {
+          write('pip 24.0 from micropip 0.6.0 (CPython 3.12.7 Pyodide WebAssembly)\r\n');
+          return;
+        }
+
         if (sub === 'install') {
           const pkgs = cmdArgs.slice(1);
           if (pkgs.length === 0) {
-            write('pip: missing package names to install\r\n');
+            write('pip: missing package names to install (e.g. pip install sympy)\r\n');
             return;
           }
           await this.pythonRuntime.pipInstall(pkgs, (log) => write(log + '\r\n'));
@@ -243,11 +289,16 @@ export class VirtualShell {
 
       case 'python':
       case 'python3': {
+        if (cmdArgs.includes('-V') || cmdArgs.includes('--version') || cmdArgs.includes('-v')) {
+          write('Python 3.12.7 (CPython Pyodide WASM Engine)\r\n');
+          return;
+        }
+
         if (cmdArgs.length === 0) {
           this.inPythonRepl = true;
-          write('\x1b[1;36mPython 3.12 (Pyodide WebAssembly)\x1b[0m\r\n');
+          write('\x1b[1;36mPython 3.12.7 (Pyodide WebAssembly)\x1b[0m\r\n');
           write('Type "help", "copyright", "credits" or "license" for more information.\r\n');
-          write('Type "exit()" to quit REPL.\r\n');
+          write('Type "exit()" or press Ctrl+C to quit REPL.\r\n');
           return;
         }
 
@@ -270,8 +321,13 @@ export class VirtualShell {
 
       case 'node':
       case 'js': {
+        if (cmdArgs.includes('-v') || cmdArgs.includes('--version')) {
+          write('v20.12.0 (Browser Sandbox)\r\n');
+          return;
+        }
+
         if (!cmdArgs[0]) {
-          write('node: missing filename\r\n');
+          write('node: missing filename (e.g. node script.js)\r\n');
           return;
         }
         const p = this.resolvePath(cmdArgs[0]);
@@ -301,6 +357,11 @@ export class VirtualShell {
       // Git Commands
       // =====================================================================
       case 'git': {
+        if (cmdArgs.includes('-v') || cmdArgs.includes('--version') || cmdArgs.includes('-V')) {
+          write('git version 2.45.0 (isomorphic-git 1.25.10)\r\n');
+          return;
+        }
+
         const sub = cmdArgs[0]?.toLowerCase();
         if (!sub) {
           write('git: missing command (status, init, add, commit, log, branch)\r\n');

@@ -162,6 +162,12 @@ export class TerminalTab {
       this.history.push(input);
     }
 
+    if (input.trim().toLowerCase() === 'clear' || input.trim().toLowerCase() === 'cls') {
+      this.term.clear();
+      this.prompt();
+      return;
+    }
+
     await this.shell.execute(input, (text) => {
       this.term.write(text.replace(/\n/g, '\r\n'));
     });
