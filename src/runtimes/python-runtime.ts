@@ -102,6 +102,18 @@ export class PythonRuntime implements LanguageRuntime {
         }
       });
 
+      // Setup stdin handler for Python input()
+      this.pyodide.setStdin({
+        stdin: () => {
+          const val = window.prompt('Python input:');
+          if (val === null) return '';
+          pushMsg('stdout', val);
+          return val + '\n';
+        },
+        error: false,
+        isatty: true
+      });
+
       // Execute python code
       const result = await this.pyodide.runPythonAsync(code);
       const executionTimeMs = performance.now() - startTime;
@@ -181,6 +193,16 @@ export class PythonRuntime implements LanguageRuntime {
 
     this.pyodide.setStdout({ batched: (t: string) => stdout(t + '\r\n') });
     this.pyodide.setStderr({ batched: (t: string) => stderr(t + '\r\n') });
+    this.pyodide.setStdin({
+      stdin: () => {
+        const val = window.prompt('Python input:');
+        if (val === null) return '';
+        stdout(val + '\r\n');
+        return val + '\n';
+      },
+      error: false,
+      isatty: true
+    });
 
     return await this.pyodide.runPythonAsync(code);
   }

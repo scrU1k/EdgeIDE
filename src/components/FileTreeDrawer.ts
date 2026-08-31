@@ -239,10 +239,6 @@ export class FileTreeDrawer {
             ${s.viewMode === 'desktop' ? Icons.desktop : Icons.mobile}
           </button>
         </div>
-
-        <button id="drawerResetBtn" class="px-2 py-1 rounded text-[11px] text-zinc-500 hover:text-red-400 active:scale-95 transition-colors">
-          Reset
-        </button>
       </div>
     `;
 
@@ -452,22 +448,6 @@ export class FileTreeDrawer {
       }
       if (!document.body.classList.contains('desktop-mode')) this.close();
       fileInput.value = '';
-    });
-
-    // Reset Templates
-    this.drawer.querySelector('#drawerResetBtn')?.addEventListener('click', async () => {
-      const confirmed = await AppDialog.confirm({
-        title: 'Reset Workspace',
-        message: 'Reset workspace files to initial starter templates? All unsaved edits will be cleared.',
-        confirmText: 'Reset',
-        isDestructive: true
-      });
-      if (confirmed) {
-        this.vfs.resetToDefaults();
-        const active = this.vfs.getActiveFile();
-        if (active) this.onSelectFileCallback(active.id);
-        if (!document.body.classList.contains('desktop-mode')) this.close();
-      }
     });
 
     this.setupTreeTouchAndDrag();

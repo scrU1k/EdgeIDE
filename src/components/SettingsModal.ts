@@ -1,15 +1,21 @@
 import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, SUPPORTED_FORMATS } from '../settings/settings-store';
 import { Icons } from './icons';
+import { AppDialog } from './AppDialog';
+import { VirtualFileSystem } from '../vfs/vfs';
 
 export class SettingsModal {
   private container: HTMLElement;
   private backdrop: HTMLElement;
   private modal: HTMLElement;
   private store: SettingsStore;
+  private vfs?: VirtualFileSystem;
+  private onResetCallback?: () => void;
   private isOpen = false;
 
-  constructor(parent: HTMLElement, store: SettingsStore) {
+  constructor(parent: HTMLElement, store: SettingsStore, vfs?: VirtualFileSystem, onReset?: () => void) {
     this.store = store;
+    this.vfs = vfs;
+    this.onResetCallback = onReset;
 
     this.container = document.createElement('div');
     this.container.className = 'fixed inset-0 z-50 hidden transition-opacity duration-200';
@@ -77,6 +83,17 @@ export class SettingsModal {
       <!-- Modal Body (Scrollable) -->
       <div class="flex-1 overflow-y-auto px-5 py-4 space-y-6 text-xs text-zinc-300">
         
+        <!-- 0. Reset Workspace Button (Prominently at Top of Settings) -->
+        <div class="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+          <div>
+            <div class="font-semibold text-red-300">Reset Workspace</div>
+            <div class="text-[11px] text-zinc-400">Restore starter template files & clear all edits</div>
+          </div>
+          <button id="settingsResetBtn" class="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 font-semibold text-xs hover:bg-red-500/30 active:scale-95 transition-all">
+            Reset
+          </button>
+        </div>
+
         <!-- 1. Accent Color (10 colors) -->
         <div>
           <label class="block font-semibold text-zinc-200 mb-2">Accent Color (10 Colors)</label>
@@ -125,14 +142,24 @@ export class SettingsModal {
           </div>
         </div>
 
-        <!-- 3. Font Family -->
+        <!-- 3. Font Family (Custom In-App Matching UI) -->
         <div>
           <label class="block font-semibold text-zinc-200 mb-2">Editor Font Family</label>
-          <select id="fontFamilySelect" class="w-full bg-[#141418] text-zinc-200 p-2.5 rounded-xl border border-white/5 focus:outline-none font-mono text-xs">
-            ${FONT_FAMILIES.map(f => `
-              <option value="${f.value}" ${s.fontFamily === f.value ? 'selected' : ''}>${f.name}</option>
-            `).join('')}
-          </select>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            ${FONT_FAMILIES.map(f => {
+              const isSelected = s.fontFamily === f.value;
+              return `
+                <button data-font-family="${f.value}" class="font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all ${
+                  isSelected 
+                    ? 'border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold' 
+                    : 'border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200'
+                }">
+                  <span class="text-xs font-mono">${f.name}</span>
+                  <span class="text-[10px] text-zinc-500 font-mono">123 abc</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
         </div>
 
         <!-- 4. Font Size Slider -->
@@ -184,44 +211,65 @@ export class SettingsModal {
   private attachEvents(): void {
     this.modal.querySelector('#settingsCloseBtn')?.addEventListener('click', () => this.close());
 
-    // Accent color buttons
+    // Reset button
+    this.modal.querySelector('#settingsResetBtn')?.addEventListener('click', async () => {
+      const confirmed = await AppDialog.confirm({
+        title: 'Reset Workspace',
+        message: 'Reset workspace files to initial starter templates? All unsaved edits will be cleared.',
+        confirmText: 'Reset',
+        isDestructive: true
+      });
+      if (confirmed) {
+        if (this.vfs) {
+          this.vfs.resetToDefaults();
+        }
+        if (this.onResetCallback) {
+          this.onResetCallback();
+        }
+        this.close();
+      }
+    });
+
+    // Accent Colors
     this.modal.querySelectorAll('.accent-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const val = btn.getAttribute('data-accent');
-        if (val) this.store.set({ accentColor: val });
+        const color = btn.getAttribute('data-accent');
+        if (color) this.store.set({ accentColor: color });
       });
     });
 
-    // Code Theme buttons
+    // Code Theme
     this.modal.querySelectorAll('.code-theme-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const theme = btn.getAttribute('data-code-theme') as any;
-        if (theme) this.store.set({ codeTheme: theme });
+        if (theme) {
+          this.store.set({ codeTheme: theme });
+          document.documentElement.setAttribute('data-theme', theme === 'light-clean' ? 'light' : 'dark');
+        }
       });
     });
 
-    // Font Family dropdown
-    const fontSelect = this.modal.querySelector('#fontFamilySelect') as HTMLSelectElement;
-    fontSelect?.addEventListener('change', () => {
-      this.store.set({ fontFamily: fontSelect.value });
+    // Custom Font Family Picker
+    this.modal.querySelectorAll('.font-family-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = btn.getAttribute('data-font-family');
+        if (val) this.store.set({ fontFamily: val });
+      });
     });
 
     // Font Size Range
-    const fontRange = this.modal.querySelector('#fontSizeRange') as HTMLInputElement;
-    if (fontRange) {
-      const updateSize = () => {
-        const size = parseFloat(fontRange.value);
-        const valEl = this.modal.querySelector('#fontSizeVal');
-        if (valEl) valEl.textContent = size + 'px';
-        this.store.set({ fontSize: size });
-      };
-      fontRange.addEventListener('input', updateSize);
-      fontRange.addEventListener('change', updateSize);
-    }
+    const fontSizeRange = this.modal.querySelector('#fontSizeRange') as HTMLInputElement;
+    const fontSizeVal = this.modal.querySelector('#fontSizeVal') as HTMLElement;
+    fontSizeRange?.addEventListener('input', () => {
+      const sz = parseFloat(fontSizeRange.value);
+      if (fontSizeVal) fontSizeVal.textContent = `${sz}px`;
+      this.store.set({ fontSize: sz });
+    });
 
     // View Mode Toggle
     this.modal.querySelector('#viewModeToggleBtn')?.addEventListener('click', () => {
-      this.store.toggleViewMode();
+      const current = this.store.get().viewMode;
+      this.store.set({ viewMode: current === 'desktop' ? 'mobile' : 'desktop' });
     });
   }
 }

@@ -55,7 +55,7 @@ code, pre, .font-mono {
   font-family: var(--editor-font-family), monospace !important;
 }
 
-/* CodeMirror 6 Direct Font & Size Targeting */
+/* CodeMirror Direct Font & Size Targeting */
 .cm-editor,
 .cm-editor *,
 .cm-scroller,
@@ -68,8 +68,16 @@ code, pre, .font-mono {
   font-size: var(--editor-font-size, 14.5px) !important;
 }
 
+.cm-gutters {
+  border-right: none !important;
+  min-width: 26px !important;
+}
+
 .cm-lineNumbers .cm-gutterElement {
-  font-size: calc(var(--editor-font-size, 14.5px) - 2px) !important;
+  font-size: calc(var(--editor-font-size, 14.5px) - 2.5px) !important;
+  padding: 0 4px 0 2px !important;
+  min-width: 20px !important;
+  text-align: right !important;
 }
 
 .cm-editor {
@@ -83,8 +91,70 @@ code, pre, .font-mono {
   overflow: auto !important;
 }
 
-.cm-gutters {
-  border-right: none !important;
+/* User Selection for Console Logs */
+#consoleTabContent,
+.console-logs,
+.console-logs * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Full App Light Theme */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+}
+
+[data-theme="light"] html,
+[data-theme="light"] body,
+[data-theme="light"] #app {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] header {
+  background-color: #ffffff !important;
+  border-bottom-color: rgba(0,0,0,0.08) !important;
+}
+
+[data-theme="light"] .tab-bar,
+[data-theme="light"] .accessory-bar {
+  background-color: #f8fafc !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+
+[data-theme="light"] .drawer,
+[data-theme="light"] .file-tree-drawer {
+  background-color: #ffffff !important;
+  border-right-color: rgba(0,0,0,0.08) !important;
+}
+
+[data-theme="light"] .output-panel {
+  background-color: #ffffff !important;
+  border-top: 1px solid rgba(0,0,0,0.08) !important;
+}
+
+[data-theme="light"] #consoleTabContent {
+  background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .accessory-btn {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+
+[data-theme="light"] .cm-gutters {
+  background-color: #f8fafc !important;
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] .cm-content {
+  color: #0f172a !important;
 }
 
 /* CodeMirror Visible Multi-Cursors & Selections */

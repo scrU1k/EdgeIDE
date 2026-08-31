@@ -44,7 +44,7 @@ export class AccessoryBar {
   constructor(parent: HTMLElement, editor: CodeEditor) {
     this.editor = editor;
     this.container = document.createElement('div');
-    this.container.className = 'accessory-bar px-2 py-1 flex items-center bg-[#000000] shrink-0 select-none z-30 transition-transform duration-100 ease-out';
+    this.container.className = 'accessory-bar px-2 py-1 flex items-center bg-[#000000] shrink-0 select-none z-30 transition-transform duration-100 ease-out overflow-x-auto';
     this.render();
     parent.appendChild(this.container);
 
@@ -79,7 +79,7 @@ export class AccessoryBar {
     this.container.innerHTML = '';
     for (const key of this.keys) {
       const btn = document.createElement('button');
-      btn.className = 'accessory-btn';
+      btn.className = 'accessory-btn shrink-0';
       if (key.icon) {
         btn.innerHTML = key.icon;
       } else if (key.label) {
@@ -87,14 +87,37 @@ export class AccessoryBar {
       }
       if (key.title) btn.title = key.title;
 
+      let startX = 0;
+      let startY = 0;
+      let isMoved = false;
+
       btn.addEventListener('pointerdown', (e) => {
-        e.preventDefault(); // Prevent losing focus on editor
+        startX = e.clientX;
+        startY = e.clientY;
+        isMoved = false;
+      });
+
+      btn.addEventListener('pointermove', (e) => {
+        if (!isMoved) {
+          const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+          if (dist > 8) {
+            isMoved = true;
+          }
+        }
+      });
+
+      btn.addEventListener('pointerup', (e) => {
+        if (isMoved) return; // Ignore drag/scroll gestures
+        e.preventDefault();
         if (key.action) {
           key.action(this.editor);
         } else if (key.insert) {
           this.editor.insertText(key.insert);
         }
       });
+
+      // Prevent losing editor focus on tap
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
 
       this.container.appendChild(btn);
     }

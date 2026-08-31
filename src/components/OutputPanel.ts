@@ -192,7 +192,7 @@ export class OutputPanel {
       if (b) {
         b.style.color = '';
         b.style.background = '';
-        b.className = 'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300';
+        b.className = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300';
       }
     });
 
@@ -207,7 +207,7 @@ export class OutputPanel {
       if (consoleBtn) {
         consoleBtn.style.color = 'var(--accent-color)';
         consoleBtn.style.background = 'var(--accent-color-subtle)';
-        consoleBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all shadow-sm';
+        consoleBtn.className = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm';
       }
       consoleContent?.classList.remove('hidden');
       clearBtn?.classList.remove('hidden');
@@ -215,7 +215,7 @@ export class OutputPanel {
       if (terminalBtn) {
         terminalBtn.style.color = 'var(--accent-color)';
         terminalBtn.style.background = 'var(--accent-color-subtle)';
-        terminalBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all shadow-sm';
+        terminalBtn.className = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm';
       }
       terminalContent?.classList.remove('hidden');
       clearBtn?.classList.remove('hidden');
@@ -227,7 +227,7 @@ export class OutputPanel {
       if (previewBtn) {
         previewBtn.style.color = 'var(--accent-color)';
         previewBtn.style.background = 'var(--accent-color-subtle)';
-        previewBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all shadow-sm';
+        previewBtn.className = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm';
       }
       previewContent?.classList.remove('hidden');
       refreshBtn?.classList.remove('hidden');
@@ -237,62 +237,43 @@ export class OutputPanel {
 
   private render(): void {
     this.element.innerHTML = `
-      <!-- Resize Handle -->
-      <div id="panelDragHandle" class="w-full py-2 flex items-center justify-center cursor-row-resize touch-none active:opacity-75 bg-[#09090b]">
-        <div class="w-10 h-1 rounded-full bg-zinc-700"></div>
-      </div>
-
-      <!-- Panel Header / Tabs -->
+      <!-- Top Edge Controls Bar (Drag Handle + Action Buttons) -->
       <div class="flex items-center justify-between px-3 py-1.5 bg-[#09090b] shrink-0 select-none border-b border-white/5">
-        <!-- Tabs -->
-        <div class="flex items-center gap-1.5 bg-[#141418] p-1 rounded-xl">
-          <!-- Console Tab -->
-          <button id="tabConsoleBtn" class="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-            </svg>
-            <span>Console</span>
-            ${this.messages.length > 0 ? `<span class="px-1.5 py-0.2 bg-zinc-800 text-zinc-300 rounded-full text-[10px]">${this.messages.length}</span>` : ''}
-          </button>
-
-          <!-- Terminal Tab -->
-          <button id="tabTerminalBtn" class="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17l6-6-6-6m8 14h8"></path>
-            </svg>
-            <span>Terminal</span>
-          </button>
-
-          <!-- Preview Tab -->
-          <button id="tabPreviewBtn" class="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-            </svg>
-            <span>Preview</span>
-          </button>
+        <!-- Drag Handle Indicator -->
+        <div id="panelDragHandle" class="flex-1 py-1.5 flex items-center cursor-row-resize touch-none">
+          <div class="w-10 h-1 rounded-full bg-zinc-700 mx-auto"></div>
         </div>
 
-        <!-- Controls -->
-        <div class="flex items-center gap-1.5">
+        <!-- Top Edge Action Buttons (Always Visible on Android & Desktop) -->
+        <div class="flex items-center gap-1 shrink-0 ml-2">
           <span id="execTimeBadge" style="color: var(--accent-color); background: var(--accent-color-subtle);" class="${this.executionTimeMs !== null ? '' : 'hidden'} px-2 py-0.5 font-mono text-[11px] rounded-lg">
             ${this.executionTimeMs !== null ? `${this.executionTimeMs.toFixed(1)}ms` : ''}
           </span>
 
-          <button id="clearConsoleBtn" title="Clear Console" class="p-1.5 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 text-xs transition-all">
+          <!-- Copy Button -->
+          <button id="copyOutputBtn" title="Copy Output" class="p-1.5 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 text-xs transition-all">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2" stroke-width="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" stroke-width="2"></path>
+            </svg>
+          </button>
+
+          <!-- Clear / Delete Button -->
+          <button id="clearConsoleBtn" title="Clear" class="p-1.5 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 text-xs transition-all">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
             </svg>
           </button>
 
+          <!-- Refresh Preview Button -->
           <button id="refreshPreviewBtn" title="Reload Preview" class="p-1.5 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 text-xs transition-all hidden">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>
           </button>
 
-          <!-- Close / Minimize -->
-          <button id="closeOutputBtn" class="p-1.5 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 transition-all">
+          <!-- Close / Minimize Button -->
+          <button id="closeOutputBtn" title="Close Panel" class="p-1.5 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 transition-all">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
             </svg>
@@ -300,10 +281,38 @@ export class OutputPanel {
         </div>
       </div>
 
+      <!-- Dedicated Full-Width Tabs Row -->
+      <div class="flex items-center px-3 py-1.5 bg-[#09090b] shrink-0 select-none border-b border-white/5">
+        <div class="flex items-center gap-1.5 bg-[#141418] p-1 rounded-xl w-full">
+          <button id="tabConsoleBtn" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            <span>Console</span>
+            ${this.messages.length > 0 ? `<span class="px-1.5 py-0.2 bg-zinc-800 text-zinc-300 rounded-full text-[10px]">${this.messages.length}</span>` : ''}
+          </button>
+
+          <button id="tabTerminalBtn" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17l6-6-6-6m8 14h8"></path>
+            </svg>
+            <span>Terminal</span>
+          </button>
+
+          <button id="tabPreviewBtn" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-zinc-500 hover:text-zinc-300">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+            </svg>
+            <span>Preview</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Panel Body -->
       <div class="flex-1 overflow-hidden relative bg-[#000000]">
-        <!-- Console View -->
-        <div id="consoleTabContent" class="h-full overflow-y-auto p-4 font-mono text-xs space-y-2">
+        <!-- Console View (Text Selection Enabled) -->
+        <div id="consoleTabContent" class="h-full overflow-y-auto p-4 font-mono text-xs space-y-2 select-text">
           <!-- Logs go here -->
         </div>
 
@@ -339,6 +348,7 @@ export class OutputPanel {
     const closeOutputBtn = this.element.querySelector('#closeOutputBtn');
     const clearConsoleBtn = this.element.querySelector('#clearConsoleBtn');
     const refreshPreviewBtn = this.element.querySelector('#refreshPreviewBtn');
+    const copyOutputBtn = this.element.querySelector('#copyOutputBtn');
 
     tabConsoleBtn?.addEventListener('click', () => {
       this.activeTab = 'console';
@@ -356,6 +366,7 @@ export class OutputPanel {
     });
 
     closeOutputBtn?.addEventListener('click', () => this.close());
+    
     clearConsoleBtn?.addEventListener('click', () => {
       if (this.activeTab === 'terminal') {
         this.terminalTab?.clear();
@@ -364,7 +375,30 @@ export class OutputPanel {
         this.clearConsole();
       }
     });
+
     refreshPreviewBtn?.addEventListener('click', () => this.refreshPreview());
+
+    copyOutputBtn?.addEventListener('click', async () => {
+      let textToCopy = '';
+      if (this.activeTab === 'console') {
+        textToCopy = this.messages.map(m => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.text}`).join('\n');
+      } else {
+        textToCopy = this.consoleLogsContainer?.innerText || '';
+      }
+      if (!textToCopy && this.messages.length === 0) {
+        textToCopy = 'No logs available.';
+      }
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        const originalIcon = copyOutputBtn.innerHTML;
+        copyOutputBtn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>`;
+        setTimeout(() => {
+          copyOutputBtn.innerHTML = originalIcon;
+        }, 1500);
+      } catch (err) {
+        console.warn('Copy error:', err);
+      }
+    });
   }
 
   private renderConsoleMessages(): void {
@@ -373,7 +407,7 @@ export class OutputPanel {
 
     if (this.messages.length === 0) {
       this.consoleLogsContainer.innerHTML = `
-        <div class="h-full flex items-center justify-center text-zinc-600 italic">
+        <div class="h-full flex items-center justify-center text-zinc-600 italic select-none">
           No output logs yet. Press Run to execute.
         </div>
       `;
@@ -382,7 +416,7 @@ export class OutputPanel {
 
     this.messages.forEach(msg => {
       const row = document.createElement('div');
-      row.className = 'flex items-start gap-2.5 py-0.5 leading-relaxed';
+      row.className = 'flex items-start gap-2.5 py-0.5 leading-relaxed select-text';
 
       let textColor = 'text-zinc-300';
 
@@ -404,7 +438,7 @@ export class OutputPanel {
 
       row.innerHTML = `
         <span class="text-[10px] text-zinc-600 shrink-0 font-mono select-none pt-0.5">${new Date(msg.timestamp).toLocaleTimeString()}</span>
-        <div class="flex-1 ${textColor} font-mono whitespace-pre-wrap break-all">${this.escapeHtml(msg.text)}</div>
+        <div class="flex-1 ${textColor} font-mono whitespace-pre-wrap break-all select-text">${this.escapeHtml(msg.text)}</div>
       `;
 
       this.consoleLogsContainer?.appendChild(row);

@@ -45,7 +45,17 @@ class MobileApp {
 
   private setupUI(): void {
     // 1. Settings Modal
-    this.settingsModal = new SettingsModal(document.body, this.settingsStore);
+    this.settingsModal = new SettingsModal(
+      document.body, 
+      this.settingsStore, 
+      this.vfs, 
+      () => {
+        const active = this.vfs.getActiveFile();
+        if (active) {
+          this.switchFile(active.id);
+        }
+      }
+    );
 
     // 2. File Tree Drawer
     this.drawer = new FileTreeDrawer(
@@ -114,7 +124,7 @@ class MobileApp {
     const activeFile = this.vfs.getActiveFile();
     if (!activeFile) return;
 
-    if (activeFile.language === 'html' || activeFile.language === 'css') {
+    if (activeFile.language === 'html' || activeFile.language === 'css' || activeFile.language === 'markdown' || activeFile.name.toLowerCase().endsWith('.md')) {
       this.outputPanel.open('preview');
       this.outputPanel.refreshPreview();
       return;
@@ -136,9 +146,14 @@ class MobileApp {
   }
 
   private bindEvents(): void {
+    // Initial data-theme
+    const initSettings = this.settingsStore.get();
+    document.documentElement.setAttribute('data-theme', initSettings.codeTheme === 'light-clean' ? 'light' : 'dark');
+
     // Settings listener to update editor fonts, themes, etc.
     this.settingsStore.subscribe((s) => {
       this.editor.updateSettings(s);
+      document.documentElement.setAttribute('data-theme', s.codeTheme === 'light-clean' ? 'light' : 'dark');
     });
 
     // Keyboard shortcuts (Ctrl+Enter / Cmd+Enter to run)

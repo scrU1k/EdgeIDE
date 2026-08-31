@@ -12,7 +12,7 @@ import { cpp } from '@codemirror/lang-cpp';
 import { SupportedLanguage } from '../vfs/types';
 import { AppSettings } from '../settings/settings-store';
 import { getCodeThemeExtensions } from './themes';
-import { getLanguageCompletions } from './autocomplete';
+import { getLanguageCompletions, globalDictionary } from './autocomplete';
 
 export class CodeEditor {
   private view: EditorView | null = null;
@@ -57,6 +57,65 @@ export class CodeEditor {
         this.languageCompartment.of(this.getLanguageExtension(language)),
         this.wordWrapCompartment.of([]),
         keymap.of([
+          {
+            key: 'Enter',
+            run: (targetView: EditorView): boolean => {
+              const { state } = targetView;
+              const { selection } = state;
+              if (!selection.main.empty) return false;
+
+              const pos = selection.main.head;
+              const line = state.doc.lineAt(pos);
+              const textBefore = line.text.slice(0, pos - line.from);
+
+              // Empty list item -> clear bullet and terminate list
+              const emptyListMatch = /^(\s*)([-*+]|\[\s*\]|\[x\]|\d+\.)\s*$/.exec(line.text);
+              if (emptyListMatch) {
+                targetView.dispatch({
+                  changes: { from: line.from, to: line.to, insert: '' },
+                  selection: { anchor: line.from }
+                });
+                return true;
+              }
+
+              // Task list: "- [ ] task" -> "- [ ] "
+              const taskMatch = /^(\s*[-*+]\s+\[(?: |x)\]\s+)(.+)$/.exec(textBefore);
+              if (taskMatch) {
+                const prefix = taskMatch[1].replace(/\[x\]/, '[ ]');
+                targetView.dispatch({
+                  changes: { from: pos, insert: '\n' + prefix },
+                  selection: { anchor: pos + 1 + prefix.length }
+                });
+                return true;
+              }
+
+              // Numbered list: "1. item" -> "2. "
+              const numMatch = /^(\s*)(\d+)\.\s+(.+)$/.exec(textBefore);
+              if (numMatch) {
+                const indent = numMatch[1];
+                const nextNum = parseInt(numMatch[2], 10) + 1;
+                const prefix = `${indent}${nextNum}. `;
+                targetView.dispatch({
+                  changes: { from: pos, insert: '\n' + prefix },
+                  selection: { anchor: pos + 1 + prefix.length }
+                });
+                return true;
+              }
+
+              // Bullet list: "- item" or "* item"
+              const bulletMatch = /^(\s*[-*+]\s+)(.+)$/.exec(textBefore);
+              if (bulletMatch) {
+                const prefix = bulletMatch[1];
+                targetView.dispatch({
+                  changes: { from: pos, insert: '\n' + prefix },
+                  selection: { anchor: pos + 1 + prefix.length }
+                });
+                return true;
+              }
+
+              return false;
+            }
+          },
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...historyKeymap,
@@ -92,8 +151,12 @@ export class CodeEditor {
           }
         }),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged && this.onChangeCallback) {
-            this.onChangeCallback(update.state.doc.toString());
+          if (update.docChanged) {
+            const docStr = update.state.doc.toString();
+            if (this.onChangeCallback) {
+              this.onChangeCallback(docStr);
+            }
+            globalDictionary.recordWords(docStr);
           }
           if (update.selectionSet && this.onSelectionChangeCallback) {
             this.onSelectionChangeCallback(update.state.selection.ranges.length);
@@ -108,17 +171,18 @@ export class CodeEditor {
             paddingBottom: '90px'
           },
           '.cm-content': {
-            padding: '14px 0 14px 8px'
+            padding: '14px 0 14px 4px'
           },
           '.cm-gutters': {
             border: 'none',
-            paddingLeft: '6px',
-            paddingRight: '6px'
+            paddingLeft: '2px',
+            paddingRight: '4px'
           },
           '.cm-lineNumbers .cm-gutterElement': {
-            minWidth: '34px',
+            minWidth: '20px',
             textAlign: 'right',
-            paddingRight: '12px',
+            paddingRight: '4px',
+            paddingLeft: '2px',
             userSelect: 'none'
           }
         })

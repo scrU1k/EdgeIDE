@@ -1,7 +1,84 @@
 import { CompletionContext, CompletionResult, completeAnyWord, snippetCompletion } from '@codemirror/autocomplete';
 import { SupportedLanguage } from '../vfs/types';
 
-// 1. Python Completions
+// ============================================================================
+// 1. On-Device Learned Vocabulary & Dictionary
+// ============================================================================
+const DICT_STORAGE_KEY = 'edgeide_user_dictionary';
+
+class OnDeviceDictionary {
+  private words: Set<string> = new Set();
+
+  constructor() {
+    this.load();
+    this.seedCommonTerms();
+  }
+
+  private seedCommonTerms(): void {
+    const common = [
+      'function', 'variable', 'constant', 'database', 'interface', 'component',
+      'response', 'request', 'payload', 'container', 'listener', 'document',
+      'element', 'attribute', 'parameters', 'arguments', 'algorithm', 'iteration',
+      'template', 'generator', 'collection', 'structure', 'controller', 'middleware',
+      'asynchronous', 'synchronous', 'operation', 'configuration', 'environment',
+      'navigation', 'permission', 'exception', 'validation', 'expression',
+      'overview', 'description', 'summary', 'introduction', 'conclusion', 'reference'
+    ];
+    common.forEach(w => this.words.add(w));
+  }
+
+  private load(): void {
+    try {
+      const raw = localStorage.getItem(DICT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(w => typeof w === 'string' && this.words.add(w));
+        }
+      }
+    } catch {}
+  }
+
+  public save(): void {
+    try {
+      const list = Array.from(this.words).slice(0, 2000); // Keep top 2000 words
+      localStorage.setItem(DICT_STORAGE_KEY, JSON.stringify(list));
+    } catch {}
+  }
+
+  public recordWords(text: string): void {
+    const tokens = text.match(/\b[A-Za-z_][A-Za-z0-9_-]{2,}\b/g);
+    if (!tokens) return;
+    let added = false;
+    for (const token of tokens) {
+      if (token.length >= 3 && token.length <= 40 && !this.words.has(token)) {
+        this.words.add(token);
+        added = true;
+      }
+    }
+    if (added) {
+      this.save();
+    }
+  }
+
+  public getCompletions(prefix: string): Array<{ label: string; type: string }> {
+    if (!prefix || prefix.length < 1) return [];
+    const lower = prefix.toLowerCase();
+    const results: Array<{ label: string; type: string }> = [];
+    
+    for (const word of this.words) {
+      if (word.toLowerCase().startsWith(lower) && word.toLowerCase() !== lower) {
+        results.push({ label: word, type: 'text' });
+        if (results.length >= 25) break;
+      }
+    }
+    return results;
+  }
+}
+
+export const globalDictionary = new OnDeviceDictionary();
+
+// 2. Python Completions
 const pythonKeywords = [
   'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del',
   'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in',
@@ -29,7 +106,7 @@ const pythonSnippets = [
   snippetCompletion('__name__ == "__main__"', { label: 'main', detail: 'main guard', type: 'keyword' }),
 ];
 
-// 2. JavaScript / TypeScript Completions
+// 3. JavaScript / TypeScript Completions
 const jsKeywords = [
   'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
   'default', 'delete', 'do', 'else', 'export', 'extends', 'finally', 'for', 'function',
@@ -58,35 +135,29 @@ const jsSnippets = [
   snippetCompletion('console.log(${val});', { label: 'clg', detail: 'console.log', type: 'function' }),
   snippetCompletion('try {\n  ${}\n} catch (error) {\n  ${}\n}', { label: 'trycatch', detail: 'try-catch block', type: 'keyword' }),
   snippetCompletion('import { ${members} } from "${module}";', { label: 'import', detail: 'import statement', type: 'keyword' }),
-  snippetCompletion('export default ${name};', { label: 'export', detail: 'export default', type: 'keyword' }),
 ];
 
-// 3. HTML Snippets
+// 4. HTML Snippets
 const htmlSnippets = [
-  snippetCompletion('<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>${title}</title>\n</head>\n<body>\n  ${}\n</body>\n</html>', { label: 'html5', detail: 'HTML5 Boilerplate', type: 'keyword' }),
+  snippetCompletion('<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>${Title}</title>\n</head>\n<body>\n  ${}\n</body>\n</html>', { label: 'html5', detail: 'HTML5 Boilerplate', type: 'keyword' }),
   snippetCompletion('<div class="${className}">\n  ${}\n</div>', { label: 'div', detail: 'div container', type: 'keyword' }),
-  snippetCompletion('<button id="${id}" class="${className}">${text}</button>', { label: 'button', detail: 'button element', type: 'keyword' }),
-  snippetCompletion('<input type="${text}" placeholder="${placeholder}" />', { label: 'input', detail: 'input element', type: 'keyword' }),
-  snippetCompletion('<span class="${className}">${text}</span>', { label: 'span', detail: 'span element', type: 'keyword' }),
-  snippetCompletion('<a href="${url}">${text}</a>', { label: 'a', detail: 'anchor link', type: 'keyword' }),
-  snippetCompletion('<img src="${url}" alt="${alt}" />', { label: 'img', detail: 'image tag', type: 'keyword' }),
-  snippetCompletion('<script src="${url}"></script>', { label: 'script', detail: 'script tag', type: 'keyword' }),
-  snippetCompletion('<link rel="stylesheet" href="${url}">', { label: 'linkcss', detail: 'stylesheet link', type: 'keyword' }),
+  snippetCompletion('<button id="${id}" class="${className}">\n  ${}\n</button>', { label: 'btn', detail: 'button tag', type: 'keyword' }),
+  snippetCompletion('<input type="${text}" id="${id}" placeholder="${placeholder}">', { label: 'input', detail: 'input tag', type: 'keyword' }),
+  snippetCompletion('<a href="${url}" target="_blank" rel="noopener">\n  ${}\n</a>', { label: 'link', detail: 'anchor tag', type: 'keyword' }),
+  snippetCompletion('<link rel="stylesheet" href="${style.css}">', { label: 'linkcss', detail: 'link stylesheet', type: 'keyword' }),
+  snippetCompletion('<script src="${app.js}"></script>', { label: 'scriptsrc', detail: 'script tag', type: 'keyword' }),
 ];
 
-// 4. CSS Snippets & Properties
+// 5. CSS Properties
 const cssProperties = [
-  'display', 'position', 'top', 'bottom', 'left', 'right', 'z-index',
-  'flex', 'flex-direction', 'justify-content', 'align-items', 'gap',
-  'grid', 'grid-template-columns', 'grid-template-rows',
-  'width', 'height', 'max-width', 'max-height', 'min-width', 'min-height',
-  'margin', 'padding', 'border', 'border-radius', 'outline',
-  'background', 'background-color', 'color', 'opacity', 'box-shadow',
-  'font-family', 'font-size', 'font-weight', 'line-height', 'text-align',
-  'transform', 'transition', 'animation', 'overflow', 'cursor'
+  'display', 'flex', 'grid', 'position', 'absolute', 'relative', 'fixed', 'sticky',
+  'width', 'height', 'max-width', 'min-width', 'max-height', 'min-height',
+  'margin', 'padding', 'background', 'background-color', 'color', 'font-family',
+  'font-size', 'font-weight', 'line-height', 'text-align', 'border', 'border-radius',
+  'box-shadow', 'overflow', 'opacity', 'z-index', 'transition', 'transform',
+  'cursor', 'align-items', 'justify-content', 'gap', 'flex-direction', 'box-sizing'
 ];
 
-// Master Language Autocomplete Source
 export function getLanguageCompletions(language: SupportedLanguage) {
   return (context: CompletionContext): CompletionResult | null => {
     const word = context.matchBefore(/[\w$.-]*/);
@@ -122,13 +193,26 @@ export function getLanguageCompletions(language: SupportedLanguage) {
         break;
     }
 
-    // Also blend in all unique document identifiers
+    // 1. Blend in all unique document identifiers from current file
     const anyWordResult = completeAnyWord(context) as CompletionResult | null;
     if (anyWordResult && anyWordResult.options) {
       const existingLabels = new Set(options.map(o => o.label));
       for (const opt of anyWordResult.options) {
         if (!existingLabels.has(opt.label)) {
           options.push({ label: opt.label, type: 'variable' });
+          existingLabels.add(opt.label);
+        }
+      }
+    }
+
+    // 2. Blend in on-device learned dictionary vocabulary
+    const dictSuggestions = globalDictionary.getCompletions(word.text);
+    if (dictSuggestions.length > 0) {
+      const existingLabels = new Set(options.map(o => o.label));
+      for (const item of dictSuggestions) {
+        if (!existingLabels.has(item.label)) {
+          options.push(item);
+          existingLabels.add(item.label);
         }
       }
     }
