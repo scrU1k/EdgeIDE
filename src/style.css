@@ -1,0 +1,313 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #000000;
+  --bg-secondary: #08080a;
+  --bg-tertiary: #101014;
+  --accent-color: #6366f1;
+  --accent-color-glow: rgba(99, 102, 241, 0.4);
+  --accent-color-subtle: rgba(99, 102, 241, 0.15);
+  --accent-color-hover: rgba(99, 102, 241, 0.85);
+  --editor-font-size: 14.5px;
+  --editor-font-family: 'Fira Code', monospace;
+  --drawer-width: 280px;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, button, input, select, textarea, div, span, p, h1, h2, h3, h4, h5, h6, label {
+  font-family: 'League Spartan', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #000000;
+  color: #f8fafc;
+  height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+#app {
+  height: 100dvh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #000000;
+  transition: margin-left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Status Bar & Safe Area Padding for Header */
+header {
+  padding-top: max(env(safe-area-inset-top, 0px), 8px) !important;
+}
+
+/* Typography & Font Family Overrides */
+code, pre, .font-mono {
+  font-family: var(--editor-font-family), monospace !important;
+}
+
+/* CodeMirror 6 Direct Font & Size Targeting */
+.cm-editor,
+.cm-editor *,
+.cm-scroller,
+.cm-content,
+.cm-line,
+.cm-gutters,
+.cm-gutterElement,
+.cm-lineNumbers {
+  font-family: var(--editor-font-family), monospace !important;
+  font-size: var(--editor-font-size, 14.5px) !important;
+}
+
+.cm-lineNumbers .cm-gutterElement {
+  font-size: calc(var(--editor-font-size, 14.5px) - 2px) !important;
+}
+
+.cm-editor {
+  height: 100% !important;
+  background-color: transparent !important;
+}
+
+.cm-scroller {
+  line-height: 1.7;
+  padding-bottom: 90px;
+  overflow: auto !important;
+}
+
+.cm-gutters {
+  border-right: none !important;
+}
+
+/* Accent Utility Classes */
+.accent-bg {
+  background-color: var(--accent-color) !important;
+}
+.accent-bg-subtle {
+  background-color: var(--accent-color-subtle) !important;
+}
+.accent-text {
+  color: var(--accent-color) !important;
+}
+.accent-glow {
+  box-shadow: 0 4px 16px var(--accent-color-glow) !important;
+}
+
+/* Custom Minimal Scrollbar */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+/* Touch Accessory Bar */
+.accessory-bar {
+  display: flex;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  background-color: #000000;
+  user-select: none;
+}
+.accessory-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.accessory-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 36px;
+  padding: 0 10px;
+  font-family: var(--editor-font-family), monospace !important;
+  font-size: 13px;
+  font-weight: 500;
+  color: #e2e8f0;
+  background: #111115;
+  border: none;
+  border-radius: 8px;
+  margin: 3px 2px;
+  touch-action: manipulation;
+  transition: all 0.12s ease;
+}
+
+.accessory-btn:active {
+  background: var(--accent-color, #6366f1) !important;
+  color: #ffffff !important;
+  transform: scale(0.92);
+}
+
+/* ==========================================================================
+   Android Specific Enhancements (Larger Buttons, Icons, and Touch Targets)
+   ========================================================================== */
+body.is-android #headerDrawerBtn,
+body.is-android #headerOutputBtn,
+body.is-android #themeToggleBtn,
+body.is-android #settingsBtn,
+body.is-android #layoutToggleBtn,
+body.is-android #drawerUploadBtn {
+  padding: 10px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 12px !important;
+}
+
+body.is-android #headerDrawerBtn svg,
+body.is-android #headerOutputBtn svg,
+body.is-android #themeToggleBtn svg,
+body.is-android #settingsBtn svg,
+body.is-android #layoutToggleBtn svg,
+body.is-android #drawerUploadBtn svg {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+body.is-android #headerRunBtn {
+  padding: 8px 18px !important;
+  font-size: 13.5px !important;
+  border-radius: 12px !important;
+}
+body.is-android #headerRunBtn svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+body.is-android .accessory-btn {
+  min-width: 46px !important;
+  height: 42px !important;
+  font-size: 15px !important;
+  margin: 4px 3px !important;
+  border-radius: 10px !important;
+}
+
+body.is-android .tab-item {
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  border-radius: 12px !important;
+}
+
+body.is-android .file-item,
+body.is-android .folder-item {
+  padding-top: 9px !important;
+  padding-bottom: 9px !important;
+  font-size: 13.5px !important;
+}
+
+/* ==========================================================================
+   Desktop Mode Layout (Zoomed-out compact view + Pinned/Collapsible Sidebar)
+   ========================================================================== */
+body.desktop-mode {
+  --editor-font-size: 13.5px;
+}
+
+body.desktop-mode.desktop-drawer-open #app {
+  margin-left: var(--drawer-width, 280px);
+}
+
+body.desktop-mode .drawer-backdrop {
+  display: none !important;
+}
+
+body.desktop-mode .drawer-wrapper {
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: var(--drawer-width, 280px) !important;
+  height: 100% !important;
+  z-index: 40 !important;
+  pointer-events: auto !important;
+  transform: translateX(-100%) !important;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  display: block !important;
+}
+
+body.desktop-mode.desktop-drawer-open .drawer-wrapper {
+  transform: translateX(0) !important;
+  display: block !important;
+}
+
+body.desktop-mode .drawer-content {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  transform: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  display: flex !important;
+}
+
+body.desktop-mode .tab-item {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+}
+
+body.desktop-mode .accessory-btn {
+  height: 30px !important;
+  min-width: 32px !important;
+  font-size: 12px !important;
+  margin: 2px 1.5px !important;
+}
+
+/* Container Queries for Resizable Drawer */
+.drawer-content {
+  container-type: inline-size;
+  container-name: drawer;
+}
+
+@container drawer (max-width: 250px) {
+  .action-btn-text {
+    display: none !important;
+  }
+  .drawer-action-btn {
+    padding: 8px 6px !important;
+    justify-content: center !important;
+  }
+}
+
+@container drawer (min-width: 251px) and (max-width: 300px) {
+  .action-btn-text {
+    font-size: 11px !important;
+  }
+  .drawer-action-btn {
+    padding: 6px 8px !important;
+  }
+}
+
+/* Drag and Drop Visual Styles */
+.drag-ghost {
+  opacity: 0.4 !important;
+  background: rgba(99, 102, 241, 0.1) !important;
+}
+.drop-indicator-top {
+  border-top: 2px solid var(--accent-color, #6366f1) !important;
+}
+.drop-indicator-bottom {
+  border-bottom: 2px solid var(--accent-color, #6366f1) !important;
+}
+.drop-indicator-inside {
+  background: rgba(99, 102, 241, 0.25) !important;
+  border: 1px dashed var(--accent-color, #6366f1) !important;
+}
