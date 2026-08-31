@@ -17,18 +17,23 @@ export class TerminalTab {
 
   constructor(parent: HTMLElement, vfs: VirtualFileSystem, pythonRuntime: PythonRuntime) {
     this.container = document.createElement('div');
-    this.container.className = 'w-full h-full p-2 bg-[#000000] relative overflow-hidden flex flex-col';
+    this.container.className = 'w-full h-full p-2 bg-[#000000] relative overflow-hidden flex flex-col touch-pan-y';
     parent.appendChild(this.container);
 
     this.shell = new VirtualShell(vfs, pythonRuntime);
 
-    // Initialize xterm.js
+    // Initialize xterm.js with strict monospace typography
     this.term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'block',
-      fontFamily: "'Fira Code', 'Courier New', monospace",
+      fontFamily: "'Fira Code', 'Consolas', 'Courier New', monospace",
       fontSize: 13,
-      lineHeight: 1.4,
+      lineHeight: 1.25,
+      letterSpacing: 0,
+      scrollback: 5000,
+      smoothScrollDuration: 100,
+      convertEol: true,
+      allowProposedApi: true,
       theme: {
         background: '#000000',
         foreground: '#f8fafc',
@@ -57,13 +62,20 @@ export class TerminalTab {
     this.term.loadAddon(this.fitAddon);
     this.term.open(this.container);
 
-    // Fit on next frame
+    // Ensure monospace font is measured accurately after fonts load
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        this.fit();
+      });
+    }
+
     requestAnimationFrame(() => {
       this.fit();
     });
 
     this.welcome();
     this.attachEvents();
+    this.setupTouchScrolling();
   }
 
   private welcome(): void {
@@ -74,6 +86,34 @@ export class TerminalTab {
 
   private prompt(): void {
     this.term.write(this.shell.getPrompt());
+  }
+
+  private setupTouchScrolling(): void {
+    let touchStartY = 0;
+    let touchAccumulator = 0;
+    const lineHeight = 20;
+
+    this.container.addEventListener('touchstart', (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        touchStartY = e.touches[0].clientY;
+        touchAccumulator = 0;
+      }
+    }, { passive: true });
+
+    this.container.addEventListener('touchmove', (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const currentY = e.touches[0].clientY;
+        const deltaY = touchStartY - currentY;
+        touchStartY = currentY;
+        touchAccumulator += deltaY;
+
+        const linesToScroll = Math.trunc(touchAccumulator / lineHeight);
+        if (linesToScroll !== 0) {
+          this.term.scrollLines(linesToScroll);
+          touchAccumulator -= linesToScroll * lineHeight;
+        }
+      }
+    }, { passive: true });
   }
 
   private attachEvents(): void {
@@ -127,7 +167,6 @@ export class TerminalTab {
           break;
 
         case '\t': // Tab (Autocomplete)
-          // Simple tab completion could be added
           break;
 
         default:
@@ -140,7 +179,6 @@ export class TerminalTab {
       }
     });
 
-    // Auto-fit on window resize
     window.addEventListener('resize', () => this.fit());
   }
 
