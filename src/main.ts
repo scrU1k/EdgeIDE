@@ -163,6 +163,28 @@ class MobileApp {
         this.handleRun();
       }
     });
+
+    // Listen for Markdown preview interactive checkbox toggles
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.source === 'aero-ide-preview' && e.data.type === 'toggle-task') {
+        const { lineIndex, checked } = e.data;
+        const activeFile = this.vfs.getActiveFile();
+        if (activeFile && (activeFile.language === 'markdown' || activeFile.name.toLowerCase().endsWith('.md'))) {
+          const lines = activeFile.content.split('\n');
+          if (lines[lineIndex] !== undefined) {
+            const targetLine = lines[lineIndex];
+            if (checked) {
+              lines[lineIndex] = targetLine.replace(/\[ \]/, '[x]');
+            } else {
+              lines[lineIndex] = targetLine.replace(/\[[xX]\]/, '[ ]');
+            }
+            const newContent = lines.join('\n');
+            this.vfs.updateContent(activeFile.id, newContent);
+            this.editor.setContent(newContent, 'markdown');
+          }
+        }
+      }
+    });
   }
 }
 

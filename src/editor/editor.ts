@@ -13,6 +13,7 @@ import { SupportedLanguage } from '../vfs/types';
 import { AppSettings } from '../settings/settings-store';
 import { getCodeThemeExtensions } from './themes';
 import { getLanguageCompletions, globalDictionary } from './autocomplete';
+import { getMarkdownSyntaxExtension } from './markdown-plugin';
 
 export class CodeEditor {
   private view: EditorView | null = null;
@@ -124,6 +125,32 @@ export class CodeEditor {
         ]),
         EditorView.domEventHandlers({
           pointerdown: (event, view) => {
+            // Check if clicking on a markdown checkbox [ ] or [x]
+            if (this.currentLanguage === 'markdown') {
+              const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              if (pos !== null) {
+                const line = view.state.doc.lineAt(pos);
+                const lineText = line.text;
+                const offset = pos - line.from;
+                
+                // Match [ ] or [x] or [X]
+                const boxMatch = lineText.match(/\[([ xX])\]/);
+                if (boxMatch && boxMatch.index !== undefined) {
+                  const boxStart = boxMatch.index;
+                  const boxEnd = boxStart + 3;
+                  if (offset >= boxStart && offset <= boxEnd) {
+                    event.preventDefault();
+                    const isChecked = boxMatch[1].toLowerCase() === 'x';
+                    const replacement = isChecked ? '[ ]' : '[x]';
+                    view.dispatch({
+                      changes: { from: line.from + boxStart, to: line.from + boxEnd, insert: replacement }
+                    });
+                    return true;
+                  }
+                }
+              }
+            }
+
             if (this.isMultiCursorMode) {
               const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
               if (pos !== null) {
@@ -226,6 +253,7 @@ export class CodeEditor {
         case 'html': return html();
         case 'css': return css();
         case 'cpp': return cpp();
+        case 'markdown': return getMarkdownSyntaxExtension();
         default: return [];
       }
     })();

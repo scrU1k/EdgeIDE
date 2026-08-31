@@ -11,7 +11,7 @@ export class HtmlPreviewBuilder {
       if (node && !node.isFolder) htmlFile = node;
     }
 
-    // 0. If active file is Markdown (.md), compile to clean responsive HTML preview
+    // 0. If active file is Markdown (.md), compile to clean responsive interactive HTML preview
     if (!htmlFile && activeFile && (activeFile.language === 'markdown' || activeFile.name.toLowerCase().endsWith('.md'))) {
       return this.renderMarkdown(activeFile.name, activeFile.content);
     }
@@ -106,47 +106,96 @@ export class HtmlPreviewBuilder {
   }
 
   public static renderMarkdown(title: string, md: string): string {
-    let body = this.escapeHtml(md);
+    const rawLines = md.split('\n');
+    const processedLines: string[] = [];
 
-    // Code blocks
-    body = body.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-      return `<div class="code-block"><div class="code-header">${lang || 'code'}</div><pre><code>${code}</code></pre></div>`;
-    });
+    let inCodeBlock = false;
+    let codeBlockLang = '';
+    let codeBlockBuffer: string[] = [];
 
-    // Inline code
-    body = body.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
 
-    // Headers
-    body = body.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-    body = body.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-    body = body.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+      // Code block delimiters
+      if (line.trim().startsWith('```')) {
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          codeBlockLang = line.trim().slice(3).trim();
+          codeBlockBuffer = [];
+          continue;
+        } else {
+          inCodeBlock = false;
+          const codeContent = this.escapeHtml(codeBlockBuffer.join('\n'));
+          processedLines.push(`<div class="code-block"><div class="code-header">${codeBlockLang || 'code'}</div><pre><code>${codeContent}</code></pre></div>`);
+          continue;
+        }
+      }
 
-    // Bold & Italic
-    body = body.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    body = body.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    body = body.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    body = body.replace(/~~(.*?)~~/g, '<del>$1</del>');
+      if (inCodeBlock) {
+        codeBlockBuffer.push(line);
+        continue;
+      }
 
-    // Blockquotes
-    body = body.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+      // Check task items e.g. "- [ ] item" or "- [x] item" or "* [ ]" or "1. [ ]"
+      const taskMatch = /^(\s*[-*+]|\s*\d+\.)\s+\[([ xX])\]\s*(.*)$/.exec(line);
+      if (taskMatch) {
+        const isChecked = taskMatch[2].toLowerCase() === 'x';
+        const taskContent = this.formatInlineMarkdown(taskMatch[3]);
+        processedLines.push(`<li class="task-item"><label class="task-label"><input type="checkbox" class="task-checkbox" data-line-index="${i}" ${isChecked ? 'checked' : ''}><span class="task-text ${isChecked ? 'task-done' : ''}">${taskContent}</span></label></li>`);
+        continue;
+      }
 
-    // Horizontal Rule
-    body = body.replace(/^---$/gim, '<hr>');
+      // Unordered list
+      const bulletMatch = /^(\s*[-*+])\s+(.*)$/.exec(line);
+      if (bulletMatch) {
+        processedLines.push(`<li>${this.formatInlineMarkdown(bulletMatch[2])}</li>`);
+        continue;
+      }
 
-    // Task list items
-    body = body.replace(/^- \[x\] (.*$)/gim, '<li class="task-item"><input type="checkbox" checked disabled> $1</li>');
-    body = body.replace(/^- \[ \] (.*$)/gim, '<li class="task-item"><input type="checkbox" disabled> $1</li>');
+      // Ordered list
+      const numMatch = /^(\s*\d+\.)\s+(.*)$/.exec(line);
+      if (numMatch) {
+        processedLines.push(`<li class="numbered-item">${this.formatInlineMarkdown(numMatch[2])}</li>`);
+        continue;
+      }
 
-    // Lists
-    body = body.replace(/^[*-] (.*$)/gim, '<li>$1</li>');
-    body = body.replace(/^\d+\. (.*$)/gim, '<li class="numbered-item">$1</li>');
+      // Headers
+      if (line.startsWith('### ')) {
+        processedLines.push(`<h3>${this.formatInlineMarkdown(line.slice(4))}</h3>`);
+        continue;
+      }
+      if (line.startsWith('## ')) {
+        processedLines.push(`<h2>${this.formatInlineMarkdown(line.slice(3))}</h2>`);
+        continue;
+      }
+      if (line.startsWith('# ')) {
+        processedLines.push(`<h1>${this.formatInlineMarkdown(line.slice(2))}</h1>`);
+        continue;
+      }
 
-    // Links
-    body = body.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      // Blockquotes
+      if (line.startsWith('> ')) {
+        processedLines.push(`<blockquote>${this.formatInlineMarkdown(line.slice(2))}</blockquote>`);
+        continue;
+      }
 
-    // Paragraphs
-    body = body.replace(/\n\n/g, '</p><p>');
-    body = body.replace(/\n/g, '<br>');
+      // Horizontal rule
+      if (line.trim() === '---' || line.trim() === '***') {
+        processedLines.push('<hr>');
+        continue;
+      }
+
+      // Empty line
+      if (line.trim() === '') {
+        processedLines.push('<div class="empty-space"></div>');
+        continue;
+      }
+
+      // Normal paragraph text
+      processedLines.push(`<p>${this.formatInlineMarkdown(line)}</p>`);
+    }
+
+    const bodyHtml = processedLines.join('\n');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -174,12 +223,12 @@ export class HtmlPreviewBuilder {
       font-weight: 700;
       line-height: 1.3;
     }
-    h1 { font-size: 24px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
-    h2 { font-size: 20px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; }
-    h3 { font-size: 17px; }
+    h1 { font-size: 24px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; color: #a5b4fc; }
+    h2 { font-size: 20px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; color: #818cf8; }
+    h3 { font-size: 17px; color: #c7d2fe; }
     p { margin: 0.8em 0; }
-    a { color: #818cf8; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    a { color: #38bdf8; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: #7dd3fc; }
     blockquote {
       border-left: 3.5px solid #818cf8;
       padding: 4px 16px;
@@ -223,14 +272,111 @@ export class HtmlPreviewBuilder {
     }
     ul, ol { padding-left: 24px; margin: 0.8em 0; }
     li { margin: 0.3em 0; }
-    .task-item { list-style: none; margin-left: -20px; display: flex; align-items: center; gap: 8px; }
+    
+    /* Interactive Checkbox Styles */
+    .task-item {
+      list-style: none;
+      margin-left: -20px;
+      display: flex;
+      align-items: center;
+      margin: 0.4em 0;
+    }
+    .task-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .task-checkbox {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #64748b;
+      border-radius: 5px;
+      background: #141418;
+      cursor: pointer;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    .task-checkbox:checked {
+      background: #4ade80;
+      border-color: #4ade80;
+    }
+    .task-checkbox:checked::after {
+      content: '';
+      width: 5px;
+      height: 9px;
+      border: solid #000000;
+      border-width: 0 2.2px 2.2px 0;
+      transform: rotate(45deg);
+      margin-bottom: 2px;
+    }
+    .task-text {
+      color: #f1f5f9;
+      transition: all 0.15s ease;
+    }
+    .task-done {
+      text-decoration: line-through;
+      color: #64748b !important;
+    }
     hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 2em 0; }
+    .empty-space { height: 12px; }
   </style>
 </head>
 <body>
-  ${body}
+  ${bodyHtml}
+
+  <script>
+    document.addEventListener('change', function(e) {
+      if (e.target && e.target.classList.contains('task-checkbox')) {
+        var lineIndex = parseInt(e.target.getAttribute('data-line-index'), 10);
+        var isChecked = e.target.checked;
+        var label = e.target.closest('.task-label');
+        if (label) {
+          var textSpan = label.querySelector('.task-text');
+          if (textSpan) {
+            if (isChecked) {
+              textSpan.classList.add('task-done');
+            } else {
+              textSpan.classList.remove('task-done');
+            }
+          }
+        }
+        try {
+          window.parent.postMessage({
+            source: 'aero-ide-preview',
+            type: 'toggle-task',
+            lineIndex: lineIndex,
+            checked: isChecked
+          }, '*');
+        } catch(err) {}
+      }
+    });
+  </script>
 </body>
 </html>`;
+  }
+
+  private static formatInlineMarkdown(raw: string): string {
+    let t = this.escapeHtml(raw);
+    // Inline code `code`
+    t = t.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Bold & italic
+    t = t.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    t = t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    t = t.replace(/~~(.*?)~~/g, '<del>$1</del>');
+    // Links [text](url)
+    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Raw URLs <http...>
+    t = t.replace(/&lt;(https?:\/\/[^&>]+)&gt;/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    return t;
   }
 
   private static escapeHtml(text: string): string {
