@@ -87,6 +87,36 @@ code, pre, .font-mono {
   border-right: none !important;
 }
 
+/* CodeMirror Visible Multi-Cursors & Selections */
+.cm-cursor,
+.cm-cursor-primary {
+  border-left: 2.2px solid #818cf8 !important;
+  box-shadow: 0 0 6px rgba(129, 140, 248, 0.7), 0 0 1px #ffffff !important;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+}
+
+.cm-cursor-secondary {
+  border-left: 2.2px solid #38bdf8 !important;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.7), 0 0 1px #ffffff !important;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+}
+
+.cm-selectionBackground,
+.cm-selectionLayer .cm-selectionBackground {
+  background-color: rgba(99, 102, 241, 0.35) !important;
+  border-radius: 2px !important;
+}
+
+.cm-focused .cm-selectionBackground {
+  background-color: rgba(99, 102, 241, 0.45) !important;
+}
+
 /* Accent Utility Classes */
 .accent-bg {
   background-color: var(--accent-color) !important;

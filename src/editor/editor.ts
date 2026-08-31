@@ -1,4 +1,4 @@
-import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection } from '@codemirror/view';
 import { EditorState, Compartment, EditorSelection } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo, selectAll, toggleComment } from '@codemirror/commands';
 import { search, SearchQuery, setSearchQuery, findNext, findPrevious, replaceNext, replaceAll, highlightSelectionMatches, selectNextOccurrence, selectSelectionMatches } from '@codemirror/search';
@@ -39,6 +39,7 @@ export class CodeEditor {
       doc: initialContent,
       extensions: [
         EditorState.allowMultipleSelections.of(true),
+        drawSelection(),
         lineNumbers(),
         highlightActiveLineGutter(),
         highlightActiveLine(),
