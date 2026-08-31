@@ -83,43 +83,55 @@ export class VirtualShell {
 
     switch (cmd) {
       case 'help':
-        write('\x1b[1;35m=====================================================\x1b[0m\r\n');
-        write('\x1b[1;36m             EdgeIDE Virtual Shell Help              \x1b[0m\r\n');
-        write('\x1b[1;35m=====================================================\x1b[0m\r\n\r\n');
+        write('\x1b[1;36mEdgeIDE Shell Help:\x1b[0m\r\n');
         
-        write('\x1b[1;33mPackage Management (Python):\x1b[0m\r\n');
-        write('  \x1b[32mpip install <pkg...>\x1b[0m  Download and install PyPI packages via micropip\r\n');
-        write('  \x1b[32mpip list\x1b[0m              Show all installed packages in virtual env\r\n');
-        write('  \x1b[32mpip --version\x1b[0m         Check pip and micropip versions\r\n\r\n');
+        write('\x1b[1;33mPackage Management:\x1b[0m\r\n');
+        write('  \x1b[32mpip install <pkg...>\x1b[0m\r\n');
+        write('    Install PyPI packages\r\n');
+        write('  \x1b[32mpip list\x1b[0m\r\n');
+        write('    List installed packages\r\n');
+        write('  \x1b[32mpip --version\x1b[0m\r\n');
+        write('    Show pip version\r\n\r\n');
 
-        write('\x1b[1;33mLanguage Runtimes & REPL:\x1b[0m\r\n');
-        write('  \x1b[32mpython [file.py]\x1b[0m      Run Python file or start interactive REPL (>>>)\r\n');
-        write('  \x1b[32mpython --version\x1b[0m      Check Python WebAssembly version\r\n');
-        write('  \x1b[32mnode [file.js]\x1b[0m        Execute JavaScript file in sandbox\r\n');
-        write('  \x1b[32mnode --version\x1b[0m        Check Node environment version\r\n\r\n');
+        write('\x1b[1;33mExecution & REPL:\x1b[0m\r\n');
+        write('  \x1b[32mpython [file.py]\x1b[0m\r\n');
+        write('    Run Python or start REPL\r\n');
+        write('  \x1b[32mpython --version\x1b[0m\r\n');
+        write('    Show Python WASM version\r\n');
+        write('  \x1b[32mnode [file.js]\x1b[0m\r\n');
+        write('    Run JavaScript sandbox\r\n');
+        write('  \x1b[32mnode --version\x1b[0m\r\n');
+        write('    Show Node sandbox version\r\n\r\n');
 
         write('\x1b[1;33mOn-Device Git:\x1b[0m\r\n');
-        write('  \x1b[32mgit init\x1b[0m              Initialize new Git repository\r\n');
-        write('  \x1b[32mgit status\x1b[0m            Check working tree status (staged, modified, untracked)\r\n');
-        write('  \x1b[32mgit add <file| . >\x1b[0m    Stage file or all changes\r\n');
-        write('  \x1b[32mgit commit -m "msg"\x1b[0m   Commit staged changes with message\r\n');
-        write('  \x1b[32mgit log\x1b[0m               View commit history\r\n');
-        write('  \x1b[32mgit branch\x1b[0m            List local branches\r\n');
-        write('  \x1b[32mgit --version\x1b[0m         Check isomorphic-git engine version\r\n\r\n');
+        write('  \x1b[32mgit init\x1b[0m\r\n');
+        write('    Initialize git repo\r\n');
+        write('  \x1b[32mgit status\x1b[0m\r\n');
+        write('    Show repository status\r\n');
+        write('  \x1b[32mgit add <file | .>\x1b[0m\r\n');
+        write('    Stage file or all changes\r\n');
+        write('  \x1b[32mgit commit -m "msg"\x1b[0m\r\n');
+        write('    Commit staged changes\r\n');
+        write('  \x1b[32mgit log\x1b[0m\r\n');
+        write('    Show commit history\r\n');
+        write('  \x1b[32mgit branch\x1b[0m\r\n');
+        write('    List branches\r\n');
+        write('  \x1b[32mgit --version\x1b[0m\r\n');
+        write('    Show git version\r\n\r\n');
 
-        write('\x1b[1;33mFile System Navigation:\x1b[0m\r\n');
-        write('  \x1b[32mls [path]\x1b[0m             List directory contents\r\n');
-        write('  \x1b[32mcd [dir]\x1b[0m              Change current working directory (e.g. cd web-app, cd ..)\r\n');
-        write('  \x1b[32mpwd\x1b[0m                   Print current working directory path\r\n');
-        write('  \x1b[32mcat <file>\x1b[0m            Display file content in terminal\r\n');
-        write('  \x1b[32mmkdir <folder>\x1b[0m        Create a new folder\r\n');
-        write('  \x1b[32mtouch <file>\x1b[0m          Create a new empty file\r\n');
-        write('  \x1b[32mrm [-r] <name>\x1b[0m        Delete file or folder\r\n\r\n');
+        write('\x1b[1;33mFile System:\x1b[0m\r\n');
+        write('  \x1b[32mls [path]\x1b[0m      List files\r\n');
+        write('  \x1b[32mcd [dir]\x1b[0m       Change directory\r\n');
+        write('  \x1b[32mpwd\x1b[0m            Current directory\r\n');
+        write('  \x1b[32mcat <file>\x1b[0m     Display file content\r\n');
+        write('  \x1b[32mmkdir <dir>\x1b[0m    Create folder\r\n');
+        write('  \x1b[32mtouch <file>\x1b[0m   Create file\r\n');
+        write('  \x1b[32mrm [-r] <name>\x1b[0m Delete file/folder\r\n\r\n');
 
         write('\x1b[1;33mUtilities:\x1b[0m\r\n');
-        write('  \x1b[32mclear\x1b[0m                 Clear terminal screen and scroll buffer\r\n');
-        write('  \x1b[32mversion\x1b[0m               Display EdgeIDE system version and engine specs\r\n');
-        write('  \x1b[32mecho <text>\x1b[0m           Print text to terminal output\r\n');
+        write('  \x1b[32mclear\x1b[0m          Clear screen\r\n');
+        write('  \x1b[32mversion\x1b[0m        EdgeIDE version\r\n');
+        write('  \x1b[32mecho <text>\x1b[0m    Print text\r\n');
         break;
 
       case 'clear':

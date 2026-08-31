@@ -133,19 +133,25 @@ code, pre, .font-mono {
 }
 
 .xterm {
-  padding: 4px !important;
+  width: 100% !important;
   height: 100% !important;
+  box-sizing: border-box !important;
+  padding: 4px !important;
+  overflow: hidden !important;
+}
+
+.xterm .xterm-screen {
+  max-width: 100% !important;
+  touch-action: pan-y !important;
 }
 
 .xterm .xterm-viewport {
+  width: 100% !important;
+  overflow-x: hidden !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y !important;
   background-color: #000000 !important;
-}
-
-.xterm .xterm-screen {
-  touch-action: pan-y !important;
 }
 
 /* Accent Utility Classes */

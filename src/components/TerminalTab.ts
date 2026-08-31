@@ -62,6 +62,12 @@ export class TerminalTab {
     this.term.loadAddon(this.fitAddon);
     this.term.open(this.container);
 
+    // Setup ResizeObserver to always keep terminal columns fitted to exact screen width
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(() => this.fit());
+    });
+    resizeObserver.observe(this.container);
+
     // Ensure monospace font is measured accurately after fonts load
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => {
