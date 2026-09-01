@@ -32,6 +32,7 @@ export interface VirtualNode {
   path: string;
   parentId: string | null; // null means root level
   isFolder: boolean;
+  isDraft?: boolean; // True for temporary in-memory drafts not yet in explorer
   content: string;
   language: SupportedLanguage;
   isExpanded?: boolean; // For folders

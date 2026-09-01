@@ -237,27 +237,27 @@ export class FileTreeDrawer {
         ${this.renderTreeLevel(null, 0)}
       </div>
 
-      <!-- Bottom Controls Bar (Theme / Settings / View Mode) -->
-      <div class="px-4 py-3 bg-[#0c0c0f] flex items-center justify-between border-t border-white/5">
-        <div class="flex items-center gap-1.5">
+      <!-- Bottom Controls Bar (Theme / Settings / View Mode / Scan QR) -->
+      <div class="px-3 py-2.5 bg-[#0c0c0f] border-t border-white/5 shrink-0 overflow-hidden select-none">
+        <div class="grid grid-cols-4 gap-1.5 w-full">
           <!-- Theme Toggle Button -->
-          <button id="themeToggleBtn" title="${isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 transition-all">
+          <button id="themeToggleBtn" title="${isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}" class="flex items-center justify-center p-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 transition-all min-w-0">
             ${isDark ? Icons.sun : Icons.moon}
           </button>
 
           <!-- Settings Button -->
-          <button id="settingsBtn" title="Preferences & Settings" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 transition-all">
+          <button id="settingsBtn" title="Preferences & Settings" class="flex items-center justify-center p-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 transition-all min-w-0">
             ${Icons.settings}
           </button>
 
           <!-- Desktop / Mobile Mode Toggle -->
-          <button id="layoutToggleBtn" title="Toggle Desktop/Mobile layout" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 transition-all">
+          <button id="layoutToggleBtn" title="Toggle Desktop/Mobile layout" class="flex items-center justify-center p-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 transition-all min-w-0">
             ${s.viewMode === 'desktop' ? Icons.desktop : Icons.mobile}
           </button>
 
           <!-- Immediate QR Scan Button -->
-          <button id="drawerScanQrBtn" title="Scan QR Code" class="p-2.5 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25 active:scale-95 transition-all">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button id="drawerScanQrBtn" title="Scan QR Code" class="flex items-center justify-center p-2 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25 active:scale-95 transition-all min-w-0">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
             </svg>
           </button>
@@ -281,7 +281,7 @@ export class FileTreeDrawer {
 
     const doResize = (clientX: number) => {
       if (!this.isResizingWidth) return;
-      const newWidth = Math.max(180, Math.min(window.innerWidth * 0.90, clientX));
+      const newWidth = Math.max(200, Math.min(window.innerWidth * 0.90, clientX));
       this.drawerWidthPx = newWidth;
       this.drawer.style.width = `${newWidth}px`;
       document.documentElement.style.setProperty('--drawer-width', `${newWidth}px`);

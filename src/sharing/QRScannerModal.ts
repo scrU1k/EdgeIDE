@@ -77,7 +77,7 @@ export class QRScannerModal {
         <div class="p-5 text-center space-y-4">
           <!-- Viewfinder Frame -->
           <div class="relative w-64 h-64 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-indigo-500/50 shadow-inner flex items-center justify-center">
-            <video id="qrVideo" class="w-full h-full object-cover"></video>
+            <video id="qrVideo" class="w-full h-full object-cover" autoplay playsinline muted webkit-playsinline></video>
             <canvas id="qrCanvas" class="hidden"></canvas>
             
             <!-- Animated Scan Line -->
@@ -164,11 +164,18 @@ export class QRScannerModal {
 
         const id = parsed.deviceId || parsed.id;
         const name = parsed.deviceName || parsed.name || 'Device';
+        const relayUrl: string | undefined = parsed.relayUrl;
+
         this.scannedDevice = {
           deviceId: id,
           deviceName: name,
           visibility: parsed.visibility || 'everyone'
         };
+
+        // Register the remote relay URL so we can post messages directly to the scanned device's server
+        if (relayUrl && this.p2pEngine) {
+          this.p2pEngine.registerPeerRelayUrl(id, relayUrl);
+        }
 
         this.renderActionSheet();
         return;

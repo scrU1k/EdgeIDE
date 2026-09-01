@@ -375,6 +375,7 @@ code, pre, .font-mono {
    Android Specific Enhancements (Larger Buttons, Icons, and Touch Targets)
    ========================================================================== */
 body.is-android #headerDrawerBtn,
+body.is-android #headerNewFileBtn,
 body.is-android #headerOutputBtn,
 body.is-android #themeToggleBtn,
 body.is-android #settingsBtn,
@@ -390,6 +391,7 @@ body.is-android #drawerUploadBtn {
 }
 
 body.is-android #headerDrawerBtn svg,
+body.is-android #headerNewFileBtn svg,
 body.is-android #headerOutputBtn svg,
 body.is-android #themeToggleBtn svg,
 body.is-android #settingsBtn svg,
@@ -493,6 +495,7 @@ body.desktop-mode .accessory-btn {
 
 /* Container Queries for Resizable Drawer */
 .drawer-content {
+  min-width: 200px !important;
   container-type: inline-size;
   container-name: drawer;
 }
@@ -653,7 +656,8 @@ body.desktop-mode .accessory-btn {
 
 [data-theme="light"] .drawer-content #themeToggleBtn,
 [data-theme="light"] .drawer-content #settingsBtn,
-[data-theme="light"] .drawer-content #layoutToggleBtn {
+[data-theme="light"] .drawer-content #layoutToggleBtn,
+[data-theme="light"] .drawer-content #drawerScanQrBtn {
   background-color: #ffffff !important;
   color: #1c1917 !important;
   border: 1px solid rgba(0, 0, 0, 0.1) !important;

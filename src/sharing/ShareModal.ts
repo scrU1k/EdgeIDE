@@ -26,10 +26,19 @@ export class ShareModal {
     expectedPin?: string;
   } | null = null;
 
-  constructor(parent: HTMLElement, p2pEngine: P2PEngine, settingsStore: SettingsStore, vfs: VirtualFileSystem) {
+  private onOpenFile?: (fileId: string) => void;
+
+  constructor(
+    parent: HTMLElement, 
+    p2pEngine: P2PEngine, 
+    settingsStore: SettingsStore, 
+    vfs: VirtualFileSystem,
+    onOpenFile?: (fileId: string) => void
+  ) {
     this.p2pEngine = p2pEngine;
     this.settingsStore = settingsStore;
     this.vfs = vfs;
+    this.onOpenFile = onOpenFile;
 
     this.container = document.createElement('div');
     this.container.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden select-none';
@@ -47,7 +56,24 @@ export class ShareModal {
   public openForPeer(peerId: string, peerName: string): void {
     this.p2pEngine.addDirectPeer(peerId, peerName);
     this.targetPeer = { id: peerId, name: peerName };
-    this.open();
+    this.isSelectingFiles = false;
+    this.isShowingQrCode = false;
+    // Don't clear incomingPrompt here — it may have been set just before this call
+
+    // Pre-select the active or first file so user can just tap Send Now
+    this.selectedFileIds.clear();
+    const active = this.vfs.getActiveFile();
+    if (active) {
+      this.selectedFileIds.add(active.id);
+    } else {
+      const all = this.vfs.getAllFiles();
+      if (all.length > 0) this.selectedFileIds.add(all[0].id);
+    }
+
+    // Bring the share modal to the front, above the QR scanner
+    this.container.style.zIndex = '9999';
+    this.container.classList.remove('hidden');
+    this.render();
   }
 
   public open(fileId?: string): void {
@@ -76,6 +102,7 @@ export class ShareModal {
 
   public close(): void {
     this.container.classList.add('hidden');
+    this.container.style.zIndex = '';
     this.isShowingQrCode = false;
     this.isSelectingFiles = false;
     this.targetPeer = null;
@@ -92,6 +119,7 @@ export class ShareModal {
 
       case 'incoming_request':
         this.incomingPrompt = ev;
+        this.container.style.zIndex = '9999';
         this.container.classList.remove('hidden');
         this.render();
         break;
@@ -101,7 +129,10 @@ export class ShareModal {
         break;
 
       case 'transfer_progress':
-        this.renderTransferProgress(ev.transfer);
+        // Don't overwrite the PIN entry screen — user must accept first
+        if (!this.incomingPrompt) {
+          this.renderTransferProgress(ev.transfer);
+        }
         break;
 
       case 'transfer_completed':
@@ -211,14 +242,15 @@ export class ShareModal {
   }
 
   private render(): void {
-    const transfer = this.p2pEngine.getActiveTransfer();
-    if (transfer && !transfer.isCompleted && !transfer.isCancelled) {
-      this.renderTransferProgress(transfer);
+    // PIN entry must take priority — don't let progress bar hide it
+    if (this.incomingPrompt) {
+      this.renderIncomingPrompt();
       return;
     }
 
-    if (this.incomingPrompt) {
-      this.renderIncomingPrompt();
+    const transfer = this.p2pEngine.getActiveTransfer();
+    if (transfer && !transfer.isCompleted && !transfer.isCancelled) {
+      this.renderTransferProgress(transfer);
       return;
     }
 
@@ -706,8 +738,27 @@ export class ShareModal {
             ${isSender ? `Files sent to ${transfer.peerName}` : `Files received from ${transfer.peerName}`}
           </div>
           <div class="text-xs text-zinc-400 mt-1">
-            ${transfer.files.length} file(s) transferred successfully.
+            ${transfer.files.length} file(s) saved directly into your workspace.
           </div>
+        </div>
+
+        <!-- List of Transferred Files -->
+        <div class="space-y-1.5 max-h-36 overflow-y-auto text-left">
+          ${transfer.files.map(f => {
+            const ext = f.name.split('.').pop() || '';
+            const sizeFormatted = (f.size || f.content?.length || 0) > 1024 
+              ? `${((f.size || f.content?.length || 0) / 1024).toFixed(1)} KB` 
+              : `${(f.size || f.content?.length || 0)} B`;
+            return `
+              <div class="p-2.5 bg-[#141418] border border-white/5 rounded-xl flex items-center justify-between">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="shrink-0">${getFileIcon(ext)}</span>
+                  <span class="text-xs font-mono text-zinc-200 truncate">${f.name}</span>
+                </div>
+                <span class="text-[10px] font-mono text-zinc-400 shrink-0 ml-2">${sizeFormatted}</span>
+              </div>
+            `;
+          }).join('')}
         </div>
 
         ${!isTrusted && !isDismissed ? `
@@ -727,14 +778,34 @@ export class ShareModal {
           </div>
         ` : ''}
 
-        <button id="doneBtn" class="w-full py-2.5 rounded-xl font-semibold text-xs text-white transition-all shadow-md" style="background-color: var(--accent-color);">
-          Done
-        </button>
+        <div class="flex items-center gap-3">
+          ${!isSender ? `
+            <button id="openInEditorBtn" class="w-full py-3 rounded-xl font-semibold text-xs text-white transition-all shadow-md active:scale-95" style="background-color: var(--accent-color);">
+              Open in Editor
+            </button>
+          ` : `
+            <button id="doneBtn" class="w-full py-2.5 rounded-xl font-semibold text-xs text-white transition-all shadow-md" style="background-color: var(--accent-color);">
+              Done
+            </button>
+          `}
+        </div>
       </div>
     `;
 
     this.modal.querySelector('#completedCloseBtn')?.addEventListener('click', () => this.close());
     this.modal.querySelector('#doneBtn')?.addEventListener('click', () => this.close());
+
+    this.modal.querySelector('#openInEditorBtn')?.addEventListener('click', () => {
+      this.close();
+      const firstReceived = transfer.files[0];
+      if (firstReceived) {
+        const cleanName = firstReceived.name.replace(/^[/\\]+/, '');
+        const fileNode = this.vfs.getFileByPath('/' + cleanName);
+        if (fileNode && this.onOpenFile) {
+          this.onOpenFile(fileNode.id);
+        }
+      }
+    });
 
     this.modal.querySelector('#addTrustBtn')?.addEventListener('click', () => {
       this.settingsStore.addTrustedDevice({

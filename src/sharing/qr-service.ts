@@ -59,10 +59,17 @@ export class QRService {
         videoElement.srcObject = stream;
         videoElement.setAttribute('playsinline', 'true');
         videoElement.setAttribute('webkit-playsinline', 'true');
-        videoElement.setAttribute('autoplay', 'true');
         videoElement.muted = true;
-        videoElement.setAttribute('muted', 'true');
-        
+
+        // Wait for metadata before playing to avoid DOMException on mobile/localhost
+        await new Promise<void>(resolve => {
+          if (videoElement.readyState >= 1) {
+            resolve();
+          } else {
+            videoElement.addEventListener('loadedmetadata', () => resolve(), { once: true });
+          }
+        });
+
         try {
           await videoElement.play();
         } catch (playErr) {

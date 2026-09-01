@@ -85,6 +85,14 @@ export class P2PEngine {
     this.emit({ type: 'peer_discovered', peer });
   }
 
+  /**
+   * Register a relay URL for a remote peer discovered via QR scan.
+   * The mesh will POST messages directly to this peer's relay server.
+   */
+  public registerPeerRelayUrl(deviceId: string, relayUrl: string): void {
+    this.mesh.registerPeerRelay(deviceId, relayUrl);
+  }
+
   private emit(ev: TransferEvent): void {
     for (const listener of this.eventListeners) {
       listener(ev);
@@ -112,6 +120,7 @@ export class P2PEngine {
         deviceName: s.deviceName,
         platform: this.getPlatformName(),
         visibility: s.sharingVisibility,
+        relayUrl: typeof window !== 'undefined' ? window.location.origin : '',
         timestamp: Date.now()
       });
     };
@@ -293,6 +302,10 @@ export class P2PEngine {
         };
         const isNew = !this.discoveredPeers.has(peer.deviceId);
         this.discoveredPeers.set(peer.deviceId, peer);
+        // Auto-register the peer's relay URL for direct cross-device messaging
+        if (data.relayUrl && data.relayUrl !== window.location.origin) {
+          this.mesh.registerPeerRelay(data.deviceId, data.relayUrl);
+        }
         if (isNew) {
           this.emit({ type: 'peer_discovered', peer });
         }
@@ -472,14 +485,21 @@ export class P2PEngine {
         const receivedFiles: TransferFile[] = JSON.parse(fullJson);
 
         // Auto-save received files into VFS
+        let lastCreatedId: string | null = null;
         for (const rf of receivedFiles) {
           const cleanName = rf.name.replace(/^[/\\]+/, '');
           const existing = this.vfs.getFileByPath('/' + cleanName);
           if (existing) {
             this.vfs.updateContent(existing.id, rf.content);
+            lastCreatedId = existing.id;
           } else {
-            this.vfs.createFile(cleanName, rf.content);
+            const created = this.vfs.createFile(cleanName, null, rf.content);
+            lastCreatedId = created.id;
           }
+        }
+
+        if (lastCreatedId) {
+          this.vfs.setActiveFile(lastCreatedId);
         }
 
         if (this.activeTransfer) {

@@ -44,6 +44,7 @@ export class SettingsModal {
 
   private isAccentDropdownOpen: boolean = false;
   private isCodeThemeDropdownOpen: boolean = false;
+  private isFontDropdownOpen: boolean = false;
   private qrDataUrl: string | null = null;
   public qrScannerModal: QRScannerModal;
 
@@ -159,11 +160,14 @@ export class SettingsModal {
 
   private async generateDeviceQr(): Promise<void> {
     const s = this.store.get();
+    // Embed this device's relay endpoint so scanned devices can send messages directly to this server
+    const relayBase = window.location.origin;
     const payload = JSON.stringify({
       edgeide: true,
       deviceId: s.deviceId,
       deviceName: s.deviceName,
-      visibility: s.sharingVisibility
+      visibility: s.sharingVisibility,
+      relayUrl: relayBase
     });
     this.qrDataUrl = await QRService.generateQRDataUrl(payload, '#000000', '#ffffff');
   }
@@ -172,6 +176,7 @@ export class SettingsModal {
     const s = this.store.get();
     const currentAccent = ACCENT_COLORS.find(c => c.value.toLowerCase() === s.accentColor.toLowerCase()) || ACCENT_COLORS[0];
     const currentCodeTheme = CODE_SYNTAX_THEMES.find(t => t.id === s.codeTheme) || CODE_SYNTAX_THEMES[0];
+    const currentFont = FONT_FAMILIES.find(f => f.value === s.fontFamily) || FONT_FAMILIES[0];
 
     if (!this.qrDataUrl) {
       await this.generateDeviceQr();
@@ -212,14 +217,14 @@ export class SettingsModal {
 
       <!-- Modal Body (Scrollable) -->
       <div class="settings-modal-body flex-1 overflow-y-auto px-5 py-4 space-y-5 text-xs text-zinc-300">
-        ${this.activeTab === 'general' ? this.renderGeneralTabHtml(s, currentAccent, currentCodeTheme) : this.renderShareTabHtml(s)}
+        ${this.activeTab === 'general' ? this.renderGeneralTabHtml(s, currentAccent, currentCodeTheme, currentFont) : this.renderShareTabHtml(s)}
       </div>
     `;
 
     this.attachEvents();
   }
 
-  private renderGeneralTabHtml(s: any, currentAccent: any, currentCodeTheme: any): string {
+  private renderGeneralTabHtml(s: any, currentAccent: any, currentCodeTheme: any, currentFont: any): string {
     return `
       <!-- 0. Reset Workspace Button (Only resets visual customizations & starter templates) -->
       <div class="reset-workspace-card flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
@@ -301,20 +306,32 @@ export class SettingsModal {
         </div>
       </div>
 
-      <!-- 3. Font Family -->
-      <div>
+      <!-- 3. Font Family Dropdown -->
+      <div class="relative">
         <label class="block font-semibold text-zinc-200 mb-1.5">Editor Font Family</label>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button id="fontDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span id="currentFontName" class="font-semibold text-zinc-100 truncate" style="font-family: ${currentFont.value};">${currentFont.name}</span>
+            <span class="text-[10px] text-zinc-500 font-mono shrink-0">123 abc</span>
+          </div>
+          <svg id="fontDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+
+        <!-- Font Dropdown Menu Options -->
+        <div id="fontDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 max-h-56 overflow-y-auto rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
           ${FONT_FAMILIES.map(f => {
             const isSelected = s.fontFamily === f.value;
             return `
-              <button data-font-family="${f.value}" class="font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all ${
-                isSelected 
-                  ? 'border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold' 
-                  : 'border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200'
+              <button type="button" data-font-family="${f.value}" class="font-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
+                isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
               }">
-                <span class="text-xs font-mono">${f.name}</span>
-                <span class="text-[10px] text-zinc-500 font-mono">123 abc</span>
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span class="text-xs text-zinc-200 truncate" style="font-family: ${f.value};">${f.name}</span>
+                  <span class="text-[10px] text-zinc-500 font-mono shrink-0">123 abc</span>
+                </div>
+                ${isSelected ? `<span class="text-emerald-400 text-xs shrink-0 ml-2">✓</span>` : ''}
               </button>
             `;
           }).join('')}
@@ -492,15 +509,19 @@ export class SettingsModal {
     }
     if (themeName) themeName.textContent = currentCodeTheme.name;
 
-    // 3. Font Family buttons
-    this.modal.querySelectorAll('.font-family-btn').forEach(btn => {
-      const font = btn.getAttribute('data-font-family');
-      const isSelected = s.fontFamily === font;
-      if (isSelected) {
-        btn.className = 'font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold';
-      } else {
-        btn.className = 'font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200';
-      }
+    // 3. Font Family Trigger & Option Update
+    const currentFont = FONT_FAMILIES.find(f => f.value === s.fontFamily) || FONT_FAMILIES[0];
+    const currentFontName = this.modal.querySelector('#currentFontName') as HTMLElement;
+    if (currentFontName) {
+      currentFontName.textContent = currentFont.name;
+      currentFontName.style.fontFamily = currentFont.value;
+    }
+    this.modal.querySelectorAll('.font-option-btn').forEach(btn => {
+      const fontVal = btn.getAttribute('data-font-family');
+      const isSelected = s.fontFamily === fontVal;
+      btn.className = `font-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
+        isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+      }`;
     });
 
     // 4. Font size label
@@ -557,6 +578,7 @@ export class SettingsModal {
       e.stopPropagation();
       this.isAccentDropdownOpen = !this.isAccentDropdownOpen;
       this.isCodeThemeDropdownOpen = false;
+      this.isFontDropdownOpen = false;
       this.syncDropdownVisibility();
     });
 
@@ -578,6 +600,7 @@ export class SettingsModal {
       e.stopPropagation();
       this.isCodeThemeDropdownOpen = !this.isCodeThemeDropdownOpen;
       this.isAccentDropdownOpen = false;
+      this.isFontDropdownOpen = false;
       this.syncDropdownVisibility();
     });
 
@@ -593,11 +616,25 @@ export class SettingsModal {
       });
     });
 
-    // Custom Font Family Picker
-    this.modal.querySelectorAll('.font-family-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const val = btn.getAttribute('data-font-family');
-        if (val) this.store.set({ fontFamily: val });
+    // Editor Font Family Custom Dropdown Toggle
+    const fontTrigger = this.modal.querySelector('#fontDropdownTrigger');
+    fontTrigger?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.isFontDropdownOpen = !this.isFontDropdownOpen;
+      this.isAccentDropdownOpen = false;
+      this.isCodeThemeDropdownOpen = false;
+      this.syncDropdownVisibility();
+    });
+
+    this.modal.querySelectorAll('.font-option-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fontVal = btn.getAttribute('data-font-family');
+        if (fontVal) {
+          this.store.set({ fontFamily: fontVal });
+        }
+        this.isFontDropdownOpen = false;
+        this.syncDropdownVisibility();
       });
     });
 
@@ -666,9 +703,10 @@ export class SettingsModal {
 
     // Close dropdowns on modal body click
     this.modal.addEventListener('click', () => {
-      if (this.isAccentDropdownOpen || this.isCodeThemeDropdownOpen) {
+      if (this.isAccentDropdownOpen || this.isCodeThemeDropdownOpen || this.isFontDropdownOpen) {
         this.isAccentDropdownOpen = false;
         this.isCodeThemeDropdownOpen = false;
+        this.isFontDropdownOpen = false;
         this.syncDropdownVisibility();
       }
     });
@@ -686,6 +724,8 @@ export class SettingsModal {
     const accentChevron = this.modal.querySelector('#accentDropdownChevron');
     const themeMenu = this.modal.querySelector('#codeThemeDropdownMenu');
     const themeChevron = this.modal.querySelector('#codeThemeDropdownChevron');
+    const fontMenu = this.modal.querySelector('#fontDropdownMenu');
+    const fontChevron = this.modal.querySelector('#fontDropdownChevron');
 
     if (accentMenu && accentChevron) {
       if (this.isAccentDropdownOpen) {
@@ -704,6 +744,16 @@ export class SettingsModal {
       } else {
         themeMenu.classList.add('hidden');
         themeChevron.classList.remove('rotate-180');
+      }
+    }
+
+    if (fontMenu && fontChevron) {
+      if (this.isFontDropdownOpen) {
+        fontMenu.classList.remove('hidden');
+        fontChevron.classList.add('rotate-180');
+      } else {
+        fontMenu.classList.add('hidden');
+        fontChevron.classList.remove('rotate-180');
       }
     }
   }

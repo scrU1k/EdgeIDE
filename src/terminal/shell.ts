@@ -1,6 +1,7 @@
 import { VirtualFileSystem } from '../vfs/vfs';
 import { PythonRuntime } from '../runtimes/python-runtime';
 import { GitAdapter } from './git-adapter';
+import { NativeHostBridge } from '../runtimes/native-host-bridge';
 
 export class VirtualShell {
   private vfs: VirtualFileSystem;
@@ -52,6 +53,33 @@ export class VirtualShell {
     const raw = commandLine.trim();
     if (!raw) return;
 
+    // 0. Host OS Command Pass-through (! <cmd> or host <cmd>)
+    if (raw.startsWith('!') || raw.toLowerCase().startsWith('host ') || raw.toLowerCase().startsWith('sys ')) {
+      const hostCmd = raw.startsWith('!') ? raw.slice(1).trim() : raw.substring(raw.indexOf(' ') + 1).trim();
+      if (!hostCmd) {
+        write('\x1b[33mUsage: ! <command> (e.g. ! dir, ! git status, ! pip install <pkg>)\x1b[0m\r\n');
+        return;
+      }
+      const hostStatus = await NativeHostBridge.getStatus();
+      if (!hostStatus.available) {
+        write('\x1b[31mHost execution is unavailable (running on sandboxed client / mobile).\x1b[0m\r\n');
+        return;
+      }
+
+      write(`\x1b[90m⚡ Running on Host ${hostStatus.osName} Shell...\x1b[0m\r\n`);
+      try {
+        const res = await NativeHostBridge.executeShell(hostCmd);
+        if (res.output) {
+          const formatted = res.output.replace(/\r?\n/g, '\r\n');
+          write(formatted);
+          if (!formatted.endsWith('\r\n')) write('\r\n');
+        }
+      } catch (err: any) {
+        write(`\x1b[31mHost error: ${err.message}\x1b[0m\r\n`);
+      }
+      return;
+    }
+
     // 1. Interactive Python REPL Mode
     if (this.inPythonRepl) {
       if (raw === 'exit()' || raw === 'quit()' || raw === 'exit') {
@@ -84,6 +112,10 @@ export class VirtualShell {
     switch (cmd) {
       case 'help':
         write('\x1b[1;36mEdgeIDE Shell Help:\x1b[0m\r\n');
+
+        write('\x1b[1;33mHost OS Terminal (Desktop Bridge):\x1b[0m\r\n');
+        write('  \x1b[32m! <command>\x1b[0m         Run directly on Host OS (e.g. ! dir, ! git status)\r\n');
+        write('  \x1b[32mhost <command>\x1b[0m      Alias for host command execution\r\n\r\n');
         
         write('\x1b[1;33mPackage Management:\x1b[0m\r\n');
         write('  \x1b[32mpip install <pkg...>\x1b[0m\r\n');

@@ -9,6 +9,7 @@ import { FileTreeDrawer } from './components/FileTreeDrawer';
 import { OutputPanel } from './components/OutputPanel';
 import { SettingsStore } from './settings/settings-store';
 import { SettingsModal } from './components/SettingsModal';
+import { SaveDraftModal } from './components/SaveDraftModal';
 import { NativeStorageBridge } from './vfs/native-storage';
 import { PlatformBridge } from './native/platform';
 import { EditorActionMenu } from './components/EditorActionMenu';
@@ -29,6 +30,7 @@ class MobileApp {
   public outputPanel!: OutputPanel;
   public settingsModal!: SettingsModal;
   public shareModal!: ShareModal;
+  public saveDraftModal!: SaveDraftModal;
   public editorActionMenu!: EditorActionMenu;
 
   private appRoot: HTMLElement;
@@ -49,15 +51,23 @@ class MobileApp {
   }
 
   private setupUI(): void {
-    // 1. Share Modal
+    // 1. Save Draft Modal
+    this.saveDraftModal = new SaveDraftModal(
+      document.body,
+      this.vfs,
+      (fileId) => this.switchFile(fileId)
+    );
+
+    // 2. Share Modal
     this.shareModal = new ShareModal(
       document.body,
       this.p2pEngine,
       this.settingsStore,
-      this.vfs
+      this.vfs,
+      (fileId) => this.switchFile(fileId)
     );
 
-    // 2. Settings Modal
+    // 3. Settings Modal
     this.settingsModal = new SettingsModal(
       document.body, 
       this.settingsStore, 
@@ -74,7 +84,7 @@ class MobileApp {
       }
     );
 
-    // 3. File Tree Drawer
+    // 4. File Tree Drawer
     this.drawer = new FileTreeDrawer(
       document.body,
       this.vfs,
@@ -85,24 +95,26 @@ class MobileApp {
       () => this.settingsModal.qrScannerModal.open()
     );
 
-    // 4. Header
+    // 5. Header
     this.header = new Header(
       this.appRoot,
       this.vfs,
       this.runtimeManager,
       () => this.drawer.toggle(),
       () => this.handleRun(),
-      () => this.outputPanel.toggle()
+      () => this.outputPanel.toggle(),
+      () => this.handleNewQuickFile()
     );
 
-    // 5. Tab Bar
+    // 6. Tab Bar
     this.tabBar = new TabBar(
       this.appRoot,
       this.vfs,
-      (fileId) => this.switchFile(fileId)
+      (fileId) => this.switchFile(fileId),
+      (draftId) => this.saveDraftModal.open(draftId)
     );
 
-    // 6. Editor Container
+    // 7. Editor Container
     this.editorContainer = document.createElement('main');
     this.editorContainer.className = 'editor-main-container flex-1 overflow-hidden relative';
     this.appRoot.appendChild(this.editorContainer);
@@ -121,7 +133,7 @@ class MobileApp {
       }
     );
 
-    // 7. Editor Action Menu (Standalone Share FAB + FAB + Dropdown + Find & Replace bar)
+    // 8. Editor Action Menu (Standalone Share FAB + FAB + Dropdown + Find & Replace bar)
     this.editorActionMenu = new EditorActionMenu(
       this.editorContainer, 
       this.editor, 
@@ -129,10 +141,10 @@ class MobileApp {
       () => this.shareModal.open()
     );
 
-    // 8. Mobile Keyboard Accessory Bar
+    // 9. Mobile Keyboard Accessory Bar
     this.accessoryBar = new AccessoryBar(this.appRoot, this.editor);
 
-    // 9. Output Panel (Console + Terminal + Web Preview with drag resize)
+    // 10. Output Panel (Console + Terminal + Web Preview with drag resize)
     this.outputPanel = new OutputPanel(document.body, this.vfs, this.runtimeManager.getPythonRuntime());
   }
 
@@ -181,6 +193,12 @@ class MobileApp {
     }
   }
 
+  private handleNewQuickFile(): void {
+    const draft = this.vfs.createDraft('Untitled');
+    this.switchFile(draft.id);
+    setTimeout(() => this.editor.focus(), 50);
+  }
+
   private bindEvents(): void {
     // Initial data-theme based on themeMode (light vs dark)
     const initSettings = this.settingsStore.get();
@@ -192,11 +210,37 @@ class MobileApp {
       document.documentElement.setAttribute('data-theme', s.themeMode);
     });
 
-    // Keyboard shortcuts (Ctrl+Enter / Cmd+Enter to run)
+    // VFS active file listener to update editor when active file changes
+    let lastActiveFileId = this.vfs.getState().activeFileId;
+    this.vfs.subscribe(() => {
+      const active = this.vfs.getActiveFile();
+      if (active && active.id !== lastActiveFileId) {
+        lastActiveFileId = active.id;
+        this.switchFile(active.id);
+      }
+    });
+
+    // Global keyboard shortcuts
     window.addEventListener('keydown', (e) => {
+      // 1. Ctrl+Enter / Cmd+Enter: Run active code
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         this.handleRun();
+      }
+
+      // 2. Ctrl+T / Cmd+T: New Quick Draft File (Default txt)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        this.handleNewQuickFile();
+      }
+
+      // 3. Ctrl+S / Cmd+S: Save Draft File if currently on an Untitled tab
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        const active = this.vfs.getActiveFile();
+        if (active && active.isDraft) {
+          e.preventDefault();
+          this.saveDraftModal.open(active.id);
+        }
       }
     });
 

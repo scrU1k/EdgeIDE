@@ -375,18 +375,18 @@ export class VirtualFileSystem {
   }
 
   public getAllFiles(): VirtualNode[] {
-    return Object.values(this.state.files).filter(f => !f.isFolder);
+    return Object.values(this.state.files).filter(f => !f.isFolder && !f.isDraft);
   }
 
   public getAllNodes(): VirtualNode[] {
-    return Object.values(this.state.files);
+    return Object.values(this.state.files).filter(f => !f.isDraft);
   }
 
   public getNodeByPath(path: string): VirtualNode | null {
     let clean = path.replace(/\\/g, '/').replace(/\/+/g, '/');
     if (!clean.startsWith('/')) clean = '/' + clean;
     if (clean.length > 1 && clean.endsWith('/')) clean = clean.slice(0, -1);
-    return Object.values(this.state.files).find(f => f.path === clean) || null;
+    return Object.values(this.state.files).find(f => f.path === clean && !f.isDraft) || null;
   }
 
   public getFileByPath(path: string): VirtualNode | null {
@@ -396,7 +396,7 @@ export class VirtualFileSystem {
 
   public getChildren(parentId: string | null): VirtualNode[] {
     return Object.values(this.state.files)
-      .filter(f => f.parentId === parentId)
+      .filter(f => f.parentId === parentId && !f.isDraft)
       .sort((a, b) => {
         if (a.isFolder && !b.isFolder) return -1;
         if (!a.isFolder && b.isFolder) return 1;
@@ -463,6 +463,10 @@ export class VirtualFileSystem {
   }
 
   public closeTab(id: string): void {
+    const node = this.state.files[id];
+    if (node && node.isDraft) {
+      delete this.state.files[id];
+    }
     this.state.openTabs = this.state.openTabs.filter(t => t !== id);
     if (this.state.activeFileId === id) {
       const remainingFileId = this.state.openTabs[0] || Object.values(this.state.files).find(f => !f.isFolder)?.id || '';
@@ -477,8 +481,79 @@ export class VirtualFileSystem {
       node.content = content;
       node.updatedAt = Date.now();
       this.save();
-      NativeStorageBridge.saveFile(node.path, content);
+      if (!node.isDraft) {
+        NativeStorageBridge.saveFile(node.path, content);
+      }
     }
+  }
+
+  /**
+   * Create an in-memory temporary draft tab (Ctrl+T or Top Bar +)
+   * Draft files persist across app restarts/refreshes in localStorage (like Notepad / Hot Exit),
+   * but are NOT listed in the explorer tree until explicitly saved.
+   */
+  public createDraft(name?: string, content: string = ''): VirtualNode {
+    const id = 'draft_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+    const language: SupportedLanguage = 'plaintext';
+
+    let draftName = name?.trim();
+    if (!draftName) {
+      const existingDrafts = Object.values(this.state.files).filter(f => f.isDraft);
+      if (existingDrafts.length === 0 && !existingDrafts.some(d => d.name === 'Untitled')) {
+        draftName = 'Untitled';
+      } else {
+        let count = 1;
+        while (existingDrafts.some(d => d.name === `Untitled-${count}` || (count === 1 && d.name === 'Untitled'))) {
+          count++;
+        }
+        draftName = `Untitled-${count}`;
+      }
+    }
+
+    const newDraft: VirtualNode = {
+      id,
+      name: draftName,
+      path: '/' + draftName,
+      parentId: null,
+      isFolder: false,
+      isDraft: true,
+      content,
+      language,
+      updatedAt: Date.now()
+    };
+
+    this.state.files[id] = newDraft;
+    this.setActiveFile(id);
+    this.save();
+    return newDraft;
+  }
+
+  /**
+   * Save a draft into the persistent VFS explorer workspace
+   */
+  public saveDraft(draftId: string, finalName: string, parentId: string | null = null): VirtualNode | null {
+    const node = this.state.files[draftId];
+    if (!node || node.isFolder) return null;
+
+    let cleanName = finalName.trim();
+    if (!cleanName) cleanName = 'Untitled.txt';
+
+    let path = '/' + cleanName;
+    if (parentId && this.state.files[parentId]) {
+      path = this.state.files[parentId].path + '/' + cleanName;
+      this.state.files[parentId].isExpanded = true;
+    }
+
+    node.name = cleanName;
+    node.path = path;
+    node.parentId = parentId;
+    node.isDraft = false;
+    node.language = detectLanguage(cleanName);
+    node.updatedAt = Date.now();
+
+    this.save();
+    NativeStorageBridge.saveFile(path, node.content);
+    return node;
   }
 
   public createFile(name: string, parentId: string | null = null, content: string = ''): VirtualNode {
@@ -503,6 +578,7 @@ export class VirtualFileSystem {
     };
     this.state.files[id] = newFile;
     this.setActiveFile(id);
+    this.save();
     NativeStorageBridge.saveFile(path, content);
     return newFile;
   }
