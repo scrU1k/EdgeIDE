@@ -40,13 +40,15 @@ export class CodeEditor {
   ): void {
     this.onChangeCallback = onChange;
     this.currentLanguage = language;
+    this.isWordWrap = settings.wordWrap ?? false;
+    this.showLineNumbers = settings.showLineNumbers ?? true;
 
     const startState = EditorState.create({
       doc: initialContent,
       extensions: [
         EditorState.allowMultipleSelections.of(true),
         drawSelection(),
-        this.lineNumbersCompartment.of([lineNumbers(), highlightActiveLineGutter(), foldGutter()]),
+        this.lineNumbersCompartment.of(this.showLineNumbers ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : []),
         highlightActiveLine(),
         history(),
         indentOnInput(),
@@ -55,10 +57,10 @@ export class CodeEditor {
         autocompletion(),
         search({ top: false }),
         highlightSelectionMatches(),
-        this.themeCompartment.of(getCodeThemeExtensions(settings.codeTheme)),
+        this.themeCompartment.of(getCodeThemeExtensions(settings.codeTheme, settings.themeMode)),
         this.fontCompartment.of(this.getFontExtension(settings.fontFamily, settings.fontSize)),
         this.languageCompartment.of(this.getLanguageExtension(language)),
-        this.wordWrapCompartment.of([]),
+        this.wordWrapCompartment.of(this.isWordWrap ? EditorView.lineWrapping : []),
         keymap.of([
           {
             key: 'Enter',
@@ -245,10 +247,14 @@ export class CodeEditor {
 
   public updateSettings(settings: AppSettings): void {
     if (!this.view) return;
+    this.isWordWrap = settings.wordWrap ?? false;
+    this.showLineNumbers = settings.showLineNumbers ?? true;
     this.view.dispatch({
       effects: [
         this.fontCompartment.reconfigure(this.getFontExtension(settings.fontFamily, settings.fontSize)),
-        this.themeCompartment.reconfigure(getCodeThemeExtensions(settings.codeTheme))
+        this.themeCompartment.reconfigure(getCodeThemeExtensions(settings.codeTheme, settings.themeMode)),
+        this.wordWrapCompartment.reconfigure(this.isWordWrap ? EditorView.lineWrapping : []),
+        this.lineNumbersCompartment.reconfigure(this.showLineNumbers ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : [])
       ]
     });
   }

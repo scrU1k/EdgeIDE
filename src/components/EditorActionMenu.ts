@@ -1,5 +1,6 @@
 import { CodeEditor } from '../editor/editor';
 import { AppDialog } from './AppDialog';
+import { SettingsStore } from '../settings/settings-store';
 
 export class EditorActionMenu {
   private container: HTMLElement;
@@ -8,6 +9,7 @@ export class EditorActionMenu {
   private findReplaceBar: HTMLElement;
   private multiCursorBar: HTMLElement;
   private editor: CodeEditor;
+  private settingsStore?: SettingsStore;
 
   private isMenuOpen: boolean = false;
   private isFindBarOpen: boolean = false;
@@ -21,8 +23,9 @@ export class EditorActionMenu {
   // Multi-Cursor state
   private cursorCountBadge!: HTMLElement;
 
-  constructor(parent: HTMLElement, editor: CodeEditor) {
+  constructor(parent: HTMLElement, editor: CodeEditor, settingsStore?: SettingsStore) {
     this.editor = editor;
+    this.settingsStore = settingsStore;
 
     this.container = document.createElement('div');
     this.container.className = 'editor-action-menu-container absolute inset-0 pointer-events-none select-none z-30';
@@ -313,11 +316,17 @@ export class EditorActionMenu {
             break;
           case 'word-wrap':
             const isWrap = this.editor.toggleWordWrap();
+            if (this.settingsStore) {
+              this.settingsStore.set({ wordWrap: isWrap });
+            }
             const badge = this.menuDropdown.querySelector('#wordWrapStatusBadge');
             if (badge) badge.textContent = isWrap ? 'On' : 'Off';
             break;
           case 'toggle-line-numbers':
             const showNums = this.editor.toggleLineNumbers();
+            if (this.settingsStore) {
+              this.settingsStore.set({ showLineNumbers: showNums });
+            }
             const numBadgeEl = this.menuDropdown.querySelector('#lineNumbersStatusBadge');
             if (numBadgeEl) numBadgeEl.textContent = showNums ? 'hide' : 'show';
             break;

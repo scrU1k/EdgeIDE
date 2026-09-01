@@ -3,17 +3,55 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { Extension } from '@codemirror/state';
 
-// 1. OLED Pitch Black Theme
-const oledDarkTheme = EditorView.theme({
-  '&': { backgroundColor: '#000000', color: '#f8fafc' },
-  '.cm-content': { caretColor: 'var(--accent-color, #818cf8)' },
-  '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--accent-color, #818cf8)' },
-  '.cm-gutters': { backgroundColor: '#000000', color: '#474754' },
-  '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.03)' },
-  '.cm-activeLineGutter': { color: 'var(--accent-color, #a5b4fc) !important' },
-  '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--accent-color-subtle, rgba(99, 102, 241, 0.3))' }
-}, { dark: true });
+// 1. Dark Base Editor Theme (Canvas, gutters, caret)
+function getDarkEditorTheme(syntaxTheme: string): Extension {
+  let bg = '#000000';
+  let gutterBg = '#000000';
+  let gutterColor = '#474754';
+  let activeLine = 'rgba(255, 255, 255, 0.03)';
 
+  if (syntaxTheme === 'midnight') {
+    bg = '#0a0f1d';
+    gutterBg = '#0a0f1d';
+    gutterColor = '#334155';
+    activeLine = 'rgba(56, 189, 248, 0.05)';
+  } else if (syntaxTheme === 'dracula') {
+    bg = '#282a36';
+    gutterBg = '#282a36';
+    gutterColor = '#6272a4';
+    activeLine = 'rgba(255, 255, 255, 0.05)';
+  } else if (syntaxTheme === 'monokai') {
+    bg = '#272822';
+    gutterBg = '#272822';
+    gutterColor = '#75715e';
+    activeLine = 'rgba(255, 255, 255, 0.05)';
+  }
+
+  return EditorView.theme({
+    '&': { backgroundColor: bg, color: '#f8fafc' },
+    '.cm-content': { caretColor: 'var(--accent-color, #818cf8)' },
+    '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--accent-color, #818cf8)' },
+    '.cm-gutters': { backgroundColor: gutterBg, color: gutterColor, borderRight: 'none' },
+    '.cm-activeLine': { backgroundColor: activeLine },
+    '.cm-activeLineGutter': { color: 'var(--accent-color, #a5b4fc) !important' },
+    '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--accent-color-subtle, rgba(99, 102, 241, 0.3))' }
+  }, { dark: true });
+}
+
+// 2. Light Base Editor Theme (Canvas, gutters, caret)
+const lightCanvasTheme = EditorView.theme({
+  '&': { backgroundColor: '#fbfbfa', color: '#1c1917' },
+  '.cm-content': { caretColor: 'var(--accent-color, #6366f1)' },
+  '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--accent-color, #6366f1)' },
+  '.cm-gutters': { backgroundColor: '#f4f3ef', color: '#9ca3af', borderRight: '1px solid rgba(0, 0, 0, 0.06)' },
+  '.cm-activeLine': { backgroundColor: 'rgba(0, 0, 0, 0.03)' },
+  '.cm-activeLineGutter': { color: 'var(--accent-color, #6366f1) !important', backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+  '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--accent-color-subtle, rgba(99, 102, 241, 0.18)) !important' }
+}, { dark: false });
+
+// 3. Highlight Styles (Tokens)
+
+// A. OLED Vibrant (Dark Palette)
 const oledDarkHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#c084fc', fontWeight: 'bold' },
   { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: '#f1f5f9' },
@@ -33,16 +71,7 @@ const oledDarkHighlight = HighlightStyle.define([
   { tag: t.invalid, color: '#f87171' }
 ]);
 
-// 2. Midnight Navy Theme
-const midnightTheme = EditorView.theme({
-  '&': { backgroundColor: '#0a0f1d', color: '#e2e8f0' },
-  '.cm-content': { caretColor: 'var(--accent-color, #38bdf8)' },
-  '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--accent-color, #38bdf8)' },
-  '.cm-gutters': { backgroundColor: '#0a0f1d', color: '#334155' },
-  '.cm-activeLine': { backgroundColor: 'rgba(56, 189, 248, 0.05)' },
-  '.cm-activeLineGutter': { color: 'var(--accent-color, #38bdf8) !important' }
-}, { dark: true });
-
+// B. Midnight Navy Highlight
 const midnightHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#818cf8', fontWeight: 'bold' },
   { tag: [t.name, t.propertyName], color: '#cbd5e1' },
@@ -54,16 +83,7 @@ const midnightHighlight = HighlightStyle.define([
   { tag: [t.comment], color: '#475569', fontStyle: 'italic' }
 ]);
 
-// 3. Dracula Dark Theme
-const draculaTheme = EditorView.theme({
-  '&': { backgroundColor: '#282a36', color: '#f8f8f2' },
-  '.cm-content': { caretColor: '#ff79c6' },
-  '&.cm-focused .cm-cursor': { borderLeftColor: '#ff79c6' },
-  '.cm-gutters': { backgroundColor: '#282a36', color: '#6272a4' },
-  '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.05)' },
-  '.cm-activeLineGutter': { color: '#ff79c6 !important' }
-}, { dark: true });
-
+// C. Dracula Highlight
 const draculaHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#ff79c6', fontWeight: 'bold' },
   { tag: [t.name, t.propertyName], color: '#f8f8f2' },
@@ -75,16 +95,7 @@ const draculaHighlight = HighlightStyle.define([
   { tag: [t.comment], color: '#6272a4', fontStyle: 'italic' }
 ]);
 
-// 4. Monokai Pro Theme
-const monokaiTheme = EditorView.theme({
-  '&': { backgroundColor: '#272822', color: '#f8f8f2' },
-  '.cm-content': { caretColor: '#f92672' },
-  '&.cm-focused .cm-cursor': { borderLeftColor: '#f92672' },
-  '.cm-gutters': { backgroundColor: '#272822', color: '#75715e' },
-  '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.05)' },
-  '.cm-activeLineGutter': { color: '#a6e22e !important' }
-}, { dark: true });
-
+// D. Monokai Highlight
 const monokaiHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#f92672', fontWeight: 'bold' },
   { tag: [t.name, t.propertyName], color: '#f8f8f2' },
@@ -96,17 +107,7 @@ const monokaiHighlight = HighlightStyle.define([
   { tag: [t.comment], color: '#75715e', fontStyle: 'italic' }
 ]);
 
-// 5. Clean Soft Warm Light Theme
-const lightCleanTheme = EditorView.theme({
-  '&': { backgroundColor: '#fbfbfa', color: '#1c1917' },
-  '.cm-content': { caretColor: 'var(--accent-color, #6366f1)' },
-  '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--accent-color, #6366f1)' },
-  '.cm-gutters': { backgroundColor: '#f4f3ef', color: '#9ca3af', borderRight: '1px solid rgba(0, 0, 0, 0.06)' },
-  '.cm-activeLine': { backgroundColor: 'rgba(0, 0, 0, 0.03)' },
-  '.cm-activeLineGutter': { color: 'var(--accent-color, #6366f1) !important', backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-  '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--accent-color-subtle, rgba(99, 102, 241, 0.18)) !important' }
-}, { dark: false });
-
+// E. Light Mode Syntax Palette (High-contrast, elegant colors for light canvas)
 const lightCleanHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#7c3aed', fontWeight: 'bold' },
   { tag: [t.name, t.propertyName, t.definition(t.name)], color: '#1c1917' },
@@ -122,18 +123,65 @@ const lightCleanHighlight = HighlightStyle.define([
   { tag: t.heading, fontWeight: 'bold', color: '#4338ca' }
 ]);
 
-export function getCodeThemeExtensions(themeName: string): Extension[] {
-  switch (themeName) {
-    case 'midnight':
-      return [midnightTheme, syntaxHighlighting(midnightHighlight)];
-    case 'dracula':
-      return [draculaTheme, syntaxHighlighting(draculaHighlight)];
-    case 'monokai':
-      return [monokaiTheme, syntaxHighlighting(monokaiHighlight)];
-    case 'light-clean':
-      return [lightCleanTheme, syntaxHighlighting(lightCleanHighlight)];
+function getHighlightStyle(syntaxTheme: string, isLight: boolean): HighlightStyle {
+  if (isLight) {
+    // In light mode, syntax colors must be readable on light background
+    switch (syntaxTheme) {
+      case 'midnight':
+        return HighlightStyle.define([
+          { tag: t.keyword, color: '#4338ca', fontWeight: 'bold' },
+          { tag: [t.name, t.propertyName], color: '#1e293b' },
+          { tag: [t.function(t.variableName)], color: '#0284c7' },
+          { tag: [t.typeName, t.className], color: '#6d28d9' },
+          { tag: [t.number, t.bool], color: '#d97706' },
+          { tag: [t.operator, t.punctuation], color: '#64748b' },
+          { tag: [t.string], color: '#059669' },
+          { tag: [t.comment], color: '#94a3b8', fontStyle: 'italic' }
+        ]);
+      case 'dracula':
+        return HighlightStyle.define([
+          { tag: t.keyword, color: '#db2777', fontWeight: 'bold' },
+          { tag: [t.name, t.propertyName], color: '#18181b' },
+          { tag: [t.function(t.variableName)], color: '#16a34a' },
+          { tag: [t.typeName, t.className], color: '#0891b2', fontStyle: 'italic' },
+          { tag: [t.number, t.bool, t.constant(t.name)], color: '#7c3aed' },
+          { tag: [t.operator], color: '#db2777' },
+          { tag: [t.string], color: '#ca8a04' },
+          { tag: [t.comment], color: '#71717a', fontStyle: 'italic' }
+        ]);
+      case 'monokai':
+        return HighlightStyle.define([
+          { tag: t.keyword, color: '#e11d48', fontWeight: 'bold' },
+          { tag: [t.name, t.propertyName], color: '#18181b' },
+          { tag: [t.function(t.variableName)], color: '#15803d' },
+          { tag: [t.typeName, t.className], color: '#0284c7', fontStyle: 'italic' },
+          { tag: [t.number, t.bool], color: '#7c3aed' },
+          { tag: [t.operator], color: '#e11d48' },
+          { tag: [t.string], color: '#b45309' },
+          { tag: [t.comment], color: '#78716c', fontStyle: 'italic' }
+        ]);
+      case 'oled-dark':
+      case 'light-clean':
+      default:
+        return lightCleanHighlight;
+    }
+  }
+
+  // In dark mode:
+  switch (syntaxTheme) {
+    case 'midnight': return midnightHighlight;
+    case 'dracula': return draculaHighlight;
+    case 'monokai': return monokaiHighlight;
+    case 'light-clean': return lightCleanHighlight;
     case 'oled-dark':
     default:
-      return [oledDarkTheme, syntaxHighlighting(oledDarkHighlight)];
+      return oledDarkHighlight;
   }
+}
+
+export function getCodeThemeExtensions(syntaxTheme: string, themeMode: 'dark' | 'light' = 'dark'): Extension[] {
+  const isLight = themeMode === 'light';
+  const baseEditorTheme = isLight ? lightCanvasTheme : getDarkEditorTheme(syntaxTheme);
+  const syntaxHighlight = getHighlightStyle(syntaxTheme, isLight);
+  return [baseEditorTheme, syntaxHighlighting(syntaxHighlight)];
 }

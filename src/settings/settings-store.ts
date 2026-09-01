@@ -5,6 +5,8 @@ export interface AppSettings {
   themeMode: 'dark' | 'light';
   viewMode: 'mobile' | 'desktop';
   codeTheme: 'oled-dark' | 'midnight' | 'dracula' | 'monokai' | 'light-clean';
+  wordWrap: boolean;
+  showLineNumbers: boolean;
 }
 
 export const ACCENT_COLORS = [
@@ -109,7 +111,7 @@ export const SUPPORTED_FORMATS = FORMAT_CATEGORIES.flatMap(cat =>
   }))
 );
 
-const SETTINGS_KEY = 'edge_ide_settings_v4';
+const SETTINGS_KEY = 'edge_ide_settings_v5';
 
 export class SettingsStore {
   private settings: AppSettings;
@@ -137,7 +139,9 @@ export class SettingsStore {
       fontSize: 14.5,
       themeMode: 'dark',
       viewMode: 'mobile',
-      codeTheme: 'oled-dark'
+      codeTheme: 'oled-dark',
+      wordWrap: false,
+      showLineNumbers: true
     };
   }
 
@@ -163,10 +167,8 @@ export class SettingsStore {
 
   public toggleTheme(): void {
     const nextMode = this.settings.themeMode === 'dark' ? 'light' : 'dark';
-    const nextCodeTheme = nextMode === 'light' ? 'light-clean' : 'oled-dark';
     this.set({ 
-      themeMode: nextMode,
-      codeTheme: nextCodeTheme
+      themeMode: nextMode
     });
   }
 

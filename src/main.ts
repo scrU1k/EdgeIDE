@@ -103,7 +103,7 @@ class MobileApp {
     );
 
     // 6. Editor Action Menu (FAB + Dropdown + Find & Replace bar)
-    this.editorActionMenu = new EditorActionMenu(this.editorContainer, this.editor);
+    this.editorActionMenu = new EditorActionMenu(this.editorContainer, this.editor, this.settingsStore);
 
     // 7. Mobile Keyboard Accessory Bar
     this.accessoryBar = new AccessoryBar(this.appRoot, this.editor);
@@ -146,14 +146,14 @@ class MobileApp {
   }
 
   private bindEvents(): void {
-    // Initial data-theme
+    // Initial data-theme based on themeMode (light vs dark)
     const initSettings = this.settingsStore.get();
-    document.documentElement.setAttribute('data-theme', initSettings.codeTheme === 'light-clean' ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', initSettings.themeMode);
 
     // Settings listener to update editor fonts, themes, etc.
     this.settingsStore.subscribe((s) => {
       this.editor.updateSettings(s);
-      document.documentElement.setAttribute('data-theme', s.codeTheme === 'light-clean' ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', s.themeMode);
     });
 
     // Keyboard shortcuts (Ctrl+Enter / Cmd+Enter to run)

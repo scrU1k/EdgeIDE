@@ -597,6 +597,7 @@ body.desktop-mode .accessory-btn {
   background-color: #ebe9e3 !important;
 }
 
+/* Drawer */
 [data-theme="light"] .drawer-content,
 [data-theme="light"] .drawer-wrapper {
   background-color: #f4f3ef !important;
@@ -604,12 +605,36 @@ body.desktop-mode .accessory-btn {
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
+[data-theme="light"] .drawer-content .bg-\[\#000000\],
+[data-theme="light"] .drawer-content .bg-\[\#09090b\],
 [data-theme="light"] .drawer-content .bg-\[\#0c0c0f\],
 [data-theme="light"] .drawer-content .bg-\[\#111115\],
 [data-theme="light"] .drawer-content .bg-\[\#141418\],
 [data-theme="light"] .drawer-content .bg-\[\#121216\] {
-  background-color: #ebe9e3 !important;
+  background-color: #f4f3ef !important;
   color: #1c1917 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .drawer-content .drawer-action-btn {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="light"] .drawer-content #drawerUploadBtn {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .drawer-content #themeToggleBtn,
+[data-theme="light"] .drawer-content #settingsBtn,
+[data-theme="light"] .drawer-content #layoutToggleBtn {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
 }
 
 [data-theme="light"] .drawer-content .text-zinc-100,
@@ -633,27 +658,137 @@ body.desktop-mode .accessory-btn {
   color: #1c1917 !important;
 }
 
-[data-theme="light"] .output-panel-container {
-  background-color: #f4f3ef !important;
+/* Output Panel */
+[data-theme="light"] .output-panel {
+  background-color: #fbfbfa !important;
   color: #1c1917 !important;
   border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
-[data-theme="light"] .output-panel-container .bg-\[\#0c0c0f\],
-[data-theme="light"] .output-panel-container .bg-\[\#111115\],
-[data-theme="light"] .output-panel-container .bg-\[\#141418\],
-[data-theme="light"] .output-panel-container .bg-\[\#0a0a0d\],
-[data-theme="light"] .output-panel-container .bg-\[\#121216\] {
+[data-theme="light"] .output-panel .bg-\[\#09090b\],
+[data-theme="light"] .output-panel .bg-\[\#0c0c0f\],
+[data-theme="light"] .output-panel .bg-\[\#111115\],
+[data-theme="light"] .output-panel .bg-\[\#0a0a0d\],
+[data-theme="light"] .output-panel .bg-\[\#121216\] {
+  background-color: #f4f3ef !important;
+  color: #1c1917 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .output-panel .bg-\[\#141418\] {
+  background-color: #ebe9e3 !important;
+}
+
+[data-theme="light"] .output-panel #copyOutputBtn,
+[data-theme="light"] .output-panel #clearConsoleBtn,
+[data-theme="light"] .output-panel #refreshPreviewBtn,
+[data-theme="light"] .output-panel #closeOutputBtn {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .output-panel #tabConsoleBtn,
+[data-theme="light"] .output-panel #tabTerminalBtn,
+[data-theme="light"] .output-panel #tabPreviewBtn {
+  color: #57534e !important;
+}
+
+[data-theme="light"] .output-panel #tabConsoleBtn:hover,
+[data-theme="light"] .output-panel #tabTerminalBtn:hover,
+[data-theme="light"] .output-panel #tabPreviewBtn:hover {
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] .output-panel #consoleTabContent {
   background-color: #fbfbfa !important;
   color: #1c1917 !important;
 }
 
-[data-theme="light"] .output-panel-container .text-zinc-100,
-[data-theme="light"] .output-panel-container .text-zinc-200,
-[data-theme="light"] .output-panel-container .text-zinc-300 {
+[data-theme="light"] .output-panel #consoleTabContent .text-zinc-300,
+[data-theme="light"] .output-panel #consoleTabContent .text-zinc-400,
+[data-theme="light"] .output-panel #consoleTabContent .text-zinc-500 {
   color: #1c1917 !important;
 }
 
+[data-theme="light"] .output-panel #panelDragHandle div {
+  background-color: #cbd5e1 !important;
+}
+
+/* Settings Modal */
+[data-theme="light"] .fixed.inset-0.z-50 .bg-\[\#0c0c0f\] {
+  background-color: #fbfbfa !important;
+  color: #1c1917 !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-100,
+[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-200,
+[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-300 {
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-400,
+[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-500 {
+  color: #78716c !important;
+}
+
+[data-theme="light"] .accent-btn {
+  background-color: #f4f3ef !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .code-theme-btn,
+[data-theme="light"] .font-family-btn {
+  background-color: #f4f3ef !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] #fontSizeRange {
+  background-color: #e5e2dc !important;
+}
+
+[data-theme="light"] #viewModeToggleBtn {
+  background-color: #ebe9e3 !important;
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] .format-category-card {
+  background-color: #f4f3ef !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .format-category-card .bg-black\/30 {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* AppDialog */
+[data-theme="light"] .dialog-card {
+  background-color: #fbfbfa !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .dialog-card h3,
+[data-theme="light"] .dialog-card p {
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] .dialog-card input {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .dialog-card #dialogCancelBtn {
+  background-color: #ebe9e3 !important;
+  color: #57534e !important;
+}
+
+/* Editor Action Menu */
 [data-theme="light"] .editor-action-menu-container .bg-\[\#121216\],
 [data-theme="light"] .editor-action-menu-container .bg-\[\#0e0e12\] {
   background-color: #f4f3ef !important;
@@ -688,12 +823,3 @@ body.desktop-mode .accessory-btn {
   border-right: 1px solid rgba(0, 0, 0, 0.06) !important;
 }
 
-[data-theme="light"] .format-category-card {
-  background-color: #f4f3ef !important;
-  border-color: rgba(0, 0, 0, 0.08) !important;
-}
-
-[data-theme="light"] .format-category-card .bg-black\/30 {
-  background-color: #ebe9e3 !important;
-  border-color: rgba(0, 0, 0, 0.06) !important;
-}

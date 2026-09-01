@@ -344,15 +344,12 @@ export class SettingsModal {
       });
     });
 
-    // Code Theme
+    // Code Theme (Changes text syntax coloring independently of App theme)
     this.modal.querySelectorAll('.code-theme-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const theme = btn.getAttribute('data-code-theme') as any;
         if (theme) {
-          this.store.set({ 
-            codeTheme: theme,
-            themeMode: theme === 'light-clean' ? 'light' : 'dark'
-          });
+          this.store.set({ codeTheme: theme });
         }
       });
     });
