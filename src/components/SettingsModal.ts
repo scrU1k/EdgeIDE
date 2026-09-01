@@ -1,82 +1,78 @@
-import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, FORMAT_CATEGORIES, AppSettings } from '../settings/settings-store';
+import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, FORMAT_CATEGORIES } from '../settings/settings-store';
 import { Icons } from './icons';
 import { AppDialog } from './AppDialog';
 import { VirtualFileSystem } from '../vfs/vfs';
 
 export class SettingsModal {
   private container: HTMLElement;
-  private backdrop: HTMLElement;
   private modal: HTMLElement;
   private store: SettingsStore;
   private vfs?: VirtualFileSystem;
   private onResetCallback?: () => void;
-  private isOpen = false;
+  private expandedCategories: Set<string> = new Set(['programming', 'notes']);
 
-  constructor(parent: HTMLElement, store: SettingsStore, vfs?: VirtualFileSystem, onReset?: () => void) {
+  constructor(parent: HTMLElement, store: SettingsStore, vfs?: VirtualFileSystem, onResetCallback?: () => void) {
     this.store = store;
     this.vfs = vfs;
-    this.onResetCallback = onReset;
+    this.onResetCallback = onResetCallback;
 
     this.container = document.createElement('div');
-    this.container.className = 'fixed inset-0 z-50 hidden transition-opacity duration-200';
-
-    this.backdrop = document.createElement('div');
-    this.backdrop.className = 'absolute inset-0 bg-black/75 backdrop-blur-sm opacity-0 transition-opacity duration-200';
-    this.backdrop.addEventListener('click', () => this.close());
-
+    this.container.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden select-none';
+    
     this.modal = document.createElement('div');
-    this.modal.className = 'absolute inset-x-4 bottom-4 top-16 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[560px] md:max-h-[85vh] bg-[#0c0c0f] rounded-2xl flex flex-col shadow-2xl overflow-hidden select-none border border-white/5 transform scale-95 opacity-0 transition-all duration-200';
-
-    this.container.appendChild(this.backdrop);
+    this.modal.className = 'settings-modal-card bg-[#0c0c0f] border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl overflow-hidden';
     this.container.appendChild(this.modal);
     parent.appendChild(this.container);
 
     this.store.subscribe((s) => {
-      if (this.isOpen) {
-        this.updateActiveStyles(s);
-      }
+      // Update interactive styles in-place without destroying DOM / interrupting user interactions
+      this.updateActiveStyles(s);
     });
-  }
 
-  public open(): void {
-    this.isOpen = true;
-    this.container.classList.remove('hidden');
-    void this.container.offsetHeight;
-    this.backdrop.classList.remove('opacity-0');
-    this.backdrop.classList.add('opacity-100');
-    this.modal.classList.remove('scale-95', 'opacity-0');
-    this.modal.classList.add('scale-100', 'opacity-100');
     this.render();
   }
 
+  public open(): void {
+    this.container.classList.remove('hidden');
+    this.updateActiveStyles(this.store.get());
+  }
+
   public close(): void {
-    this.isOpen = false;
-    this.backdrop.classList.remove('opacity-100');
-    this.backdrop.classList.add('opacity-0');
-    this.modal.classList.remove('scale-100', 'opacity-100');
-    this.modal.classList.add('scale-95', 'opacity-0');
-    setTimeout(() => {
-      if (!this.isOpen) this.container.classList.add('hidden');
-    }, 200);
+    this.container.classList.add('hidden');
   }
 
-  public toggle(): void {
-    if (this.isOpen) this.close();
-    else this.open();
+  private toggleCategory(catId: string): void {
+    if (this.expandedCategories.has(catId)) {
+      this.expandedCategories.delete(catId);
+    } else {
+      this.expandedCategories.add(catId);
+    }
+    
+    // Smoothly toggle container visibility and chevron rotation
+    const bodyEl = this.modal.querySelector(`#cat-body-${catId}`);
+    const chevronEl = this.modal.querySelector(`#cat-chevron-${catId}`);
+    if (bodyEl && chevronEl) {
+      if (this.expandedCategories.has(catId)) {
+        bodyEl.classList.remove('hidden');
+        chevronEl.classList.add('rotate-180');
+      } else {
+        bodyEl.classList.add('hidden');
+        chevronEl.classList.remove('rotate-180');
+      }
+    }
   }
 
-  private getCategoryIcon(id: string): string {
-    switch (id) {
+  private getCategoryIcon(catId: string): string {
+    switch (catId) {
       case 'programming':
-        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>`;
+        return `<svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>`;
       case 'web':
-        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>`;
+        return `<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"></path></svg>`;
       case 'database':
-        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>`;
+        return `<svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" stroke-width="2"></ellipse><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>`;
       case 'notes':
-        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>`;
       default:
-        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" /></svg>`;
+        return `<svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`;
     }
   }
 
@@ -101,7 +97,7 @@ export class SettingsModal {
 
     this.modal.innerHTML = `
       <!-- Modal Header -->
-      <div class="flex items-center justify-between px-5 py-4 bg-[#0c0c0f] border-b border-white/5 shrink-0">
+      <div class="settings-modal-header flex items-center justify-between px-5 py-4 bg-[#0c0c0f] border-b border-white/5 shrink-0">
         <div class="flex items-center gap-2">
           <span style="color: var(--accent-color);">${Icons.settings}</span>
           <h2 class="font-bold text-sm text-zinc-100">Preferences</h2>
@@ -114,10 +110,10 @@ export class SettingsModal {
       </div>
 
       <!-- Modal Body (Scrollable) -->
-      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-6 text-xs text-zinc-300">
+      <div class="settings-modal-body flex-1 overflow-y-auto px-5 py-4 space-y-5 text-xs text-zinc-300">
         
         <!-- 0. Reset Workspace Button -->
-        <div class="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+        <div class="reset-workspace-card flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
           <div>
             <div class="font-semibold text-red-300">Reset Workspace</div>
             <div class="text-[11px] text-zinc-400">Restore starter template files & clear all edits</div>
@@ -127,57 +123,53 @@ export class SettingsModal {
           </button>
         </div>
 
-        <!-- 1. Accent Color (10 colors) -->
+        <!-- 1. Accent Color Dropdown Selection Menu -->
         <div>
-          <label class="block font-semibold text-zinc-200 mb-2">Accent Color (10 Colors)</label>
-          <div class="grid grid-cols-5 gap-2.5">
-            ${ACCENT_COLORS.map(c => {
-              const isSelected = s.accentColor.toLowerCase() === c.value.toLowerCase();
-              return `
-                <button data-accent="${c.value}" class="accent-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border transition-all ${
-                  isSelected 
-                    ? 'border-white bg-white/10 shadow-sm scale-105' 
-                    : 'border-transparent bg-[#141418] hover:bg-[#1a1a20]'
-                }">
-                  <span class="w-5 h-5 rounded-full shadow-inner flex items-center justify-center" style="background-color: ${c.value}">
-                    ${isSelected ? `<svg class="w-3 h-3 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>` : ''}
-                  </span>
-                  <span class="text-[10px] font-medium text-zinc-300 truncate">${c.name}</span>
-                </button>
-              `;
-            }).join('')}
+          <label class="block font-semibold text-zinc-200 mb-1.5">Accent Color</label>
+          <div class="relative">
+            <select id="accentColorSelect" class="settings-dropdown w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer">
+              ${ACCENT_COLORS.map(c => `
+                <option value="${c.value}" ${s.accentColor.toLowerCase() === c.value.toLowerCase() ? 'selected' : ''}>
+                  ${c.name} (${c.value})
+                </option>
+              `).join('')}
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-zinc-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </div>
           </div>
         </div>
 
-        <!-- 2. Code Syntax Theme -->
+        <!-- 2. Code Syntax Theme Dropdown Selection Menu -->
         <div>
-          <label class="block font-semibold text-zinc-200 mb-2">Code Syntax Theme</label>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            ${[
-              { id: 'oled-dark', name: 'OLED Pitch Black', preview: '#000000' },
-              { id: 'midnight', name: 'Midnight Navy', preview: '#0a0f1d' },
-              { id: 'dracula', name: 'Dracula Dark', preview: '#282a36' },
-              { id: 'monokai', name: 'Monokai Pro', preview: '#272822' },
-              { id: 'light-clean', name: 'Soft Warm Light', preview: '#fbfbfa' }
-            ].map(t => {
-              const isSelected = s.codeTheme === t.id;
-              return `
-                <button data-code-theme="${t.id}" class="code-theme-btn p-2.5 rounded-xl text-left border flex items-center gap-2.5 transition-all ${
-                  isSelected 
-                    ? 'border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold' 
-                    : 'border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200'
-                }">
-                  <span class="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0" style="background-color: ${t.preview}"></span>
-                  <span class="truncate">${t.name}</span>
-                </button>
-              `;
-            }).join('')}
+          <label class="block font-semibold text-zinc-200 mb-1.5">Code Syntax Theme</label>
+          <div class="relative">
+            <select id="codeThemeSelect" class="settings-dropdown w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer">
+              ${[
+                { id: 'oled-dark', name: 'OLED Pitch Black (Classic Vibrant)' },
+                { id: 'midnight', name: 'Midnight Navy (Deep Slate & Blue)' },
+                { id: 'dracula', name: 'Dracula Dark (Pink & Green)' },
+                { id: 'monokai', name: 'Monokai Pro (Warm Yellow & Rose)' },
+                { id: 'light-clean', name: 'Soft Warm Light (Clean High-Contrast)' }
+              ].map(t => `
+                <option value="${t.id}" ${s.codeTheme === t.id ? 'selected' : ''}>
+                  ${t.name}
+                </option>
+              `).join('')}
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-zinc-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </div>
           </div>
         </div>
 
         <!-- 3. Font Family (Custom In-App Matching UI) -->
         <div>
-          <label class="block font-semibold text-zinc-200 mb-2">Editor Font Family</label>
+          <label class="block font-semibold text-zinc-200 mb-1.5">Editor Font Family</label>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             ${FONT_FAMILIES.map(f => {
               const isSelected = s.fontFamily === f.value;
@@ -205,7 +197,7 @@ export class SettingsModal {
         </div>
 
         <!-- 5. View Mode Switch -->
-        <div class="flex items-center justify-between p-3 bg-[#141418] rounded-xl">
+        <div class="layout-mode-card flex items-center justify-between p-3 bg-[#141418] rounded-xl border border-white/5">
           <div>
             <div class="font-semibold text-zinc-200">Layout Mode</div>
             <div class="text-[11px] text-zinc-500">Toggle mobile touch drawer vs desktop pinned sidebar</div>
@@ -220,43 +212,53 @@ export class SettingsModal {
         <div>
           <div class="flex items-center justify-between mb-2">
             <label class="font-semibold text-zinc-200">Supported File Formats</label>
-            <span class="text-[11px] text-zinc-500">${FORMAT_CATEGORIES.reduce((acc, c) => acc + c.formats.length, 0)} formats</span>
+            <span class="text-[11px] text-zinc-500 font-mono">26 formats</span>
           </div>
+          
+          <div class="space-y-2.5">
+            ${FORMAT_CATEGORIES.map(cat => {
+              const isExpanded = this.expandedCategories.has(cat.id);
+              return `
+                <div class="format-category-card rounded-2xl bg-[#141418] border border-white/5 overflow-hidden transition-all">
+                  <!-- Category Header Card (Clickable Toggle) -->
+                  <button data-cat-id="${cat.id}" class="cat-header-btn w-full p-3 flex items-center justify-between text-left hover:bg-white/5 active:bg-white/10 transition-colors">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                      <div class="p-2 rounded-xl bg-white/5 shrink-0">
+                        ${this.getCategoryIcon(cat.id)}
+                      </div>
+                      <div class="min-w-0">
+                        <div class="font-semibold text-xs text-zinc-200 truncate">${cat.title}</div>
+                        <div class="text-[11px] text-zinc-500 truncate">${cat.description}</div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                      <span class="text-[11px] text-zinc-500 font-mono">${cat.formats.length} formats</span>
+                      <svg id="cat-chevron-${cat.id}" class="w-4 h-4 text-zinc-400 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                      </svg>
+                    </div>
+                  </button>
 
-          <div class="space-y-2">
-            ${FORMAT_CATEGORIES.map(cat => `
-              <div class="format-category-card border border-white/5 bg-[#141418] rounded-xl overflow-hidden transition-all">
-                <button data-toggle-category="${cat.id}" class="w-full flex items-center justify-between p-3 text-left hover:bg-white/5 active:bg-white/10 transition-colors">
-                  <div class="flex items-center gap-2.5">
-                    <span class="p-1.5 rounded-lg bg-white/5" style="color: var(--accent-color);">${this.getCategoryIcon(cat.id)}</span>
-                    <div>
-                      <div class="font-semibold text-xs text-zinc-100">${cat.title}</div>
-                      <div class="text-[10px] text-zinc-400">${cat.description}</div>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-zinc-400 font-mono">${cat.formats.length} formats</span>
-                    <svg class="category-chevron w-4 h-4 text-zinc-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </button>
-                <div id="cat-body-${cat.id}" class="hidden px-3 pb-3 pt-1 space-y-1.5 border-t border-white/5">
-                  ${cat.formats.map(item => `
-                    <div class="flex items-center justify-between p-2 rounded-lg bg-black/30 border border-white/5 text-xs">
-                      <div class="flex items-center gap-2">
-                        <span class="font-mono font-bold" style="color: var(--accent-color);">${item.ext}</span>
-                        <span class="text-zinc-200 font-medium">${item.name}</span>
+                  <!-- Category Body (Read-only Dropdown List) -->
+                  <div id="cat-body-${cat.id}" class="${isExpanded ? '' : 'hidden'} border-t border-white/5 bg-black/30 p-2 space-y-1.5">
+                    ${cat.formats.map(f => `
+                      <div class="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
+                        <div class="min-w-0 pr-2">
+                          <div class="flex items-center gap-2">
+                            <span class="font-mono font-bold text-xs text-zinc-200">${f.name}</span>
+                            <span class="font-mono text-[11px] text-zinc-500">${f.ext}</span>
+                          </div>
+                          <div class="text-[10px] text-zinc-400 truncate">${f.engine}</div>
+                        </div>
+                        <div class="shrink-0">
+                          ${this.getBadgeHtml(f.badge)}
+                        </div>
                       </div>
-                      <div class="flex items-center gap-2">
-                        <span class="text-[10px] text-zinc-400 hidden sm:inline font-mono">${item.engine}</span>
-                        ${this.getBadgeHtml(item.badge)}
-                      </div>
-                    </div>
-                  `).join('')}
+                    `).join('')}
+                  </div>
                 </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         </div>
 
@@ -266,28 +268,18 @@ export class SettingsModal {
     this.attachEvents();
   }
 
-  private updateActiveStyles(s: AppSettings): void {
-    // 1. Accent Color buttons
-    this.modal.querySelectorAll('.accent-btn').forEach(btn => {
-      const color = btn.getAttribute('data-accent');
-      const isSelected = s.accentColor.toLowerCase() === color?.toLowerCase();
-      if (isSelected) {
-        btn.className = 'accent-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border transition-all border-white bg-white/10 shadow-sm scale-105';
-      } else {
-        btn.className = 'accent-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border transition-all border-transparent bg-[#141418] hover:bg-[#1a1a20]';
-      }
-    });
+  private updateActiveStyles(s: any): void {
+    // 1. Accent Color Select
+    const accentSelect = this.modal.querySelector('#accentColorSelect') as HTMLSelectElement;
+    if (accentSelect) {
+      accentSelect.value = s.accentColor;
+    }
 
-    // 2. Code Theme buttons
-    this.modal.querySelectorAll('.code-theme-btn').forEach(btn => {
-      const theme = btn.getAttribute('data-code-theme');
-      const isSelected = s.codeTheme === theme;
-      if (isSelected) {
-        btn.className = 'code-theme-btn p-2.5 rounded-xl text-left border flex items-center gap-2.5 transition-all border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold';
-      } else {
-        btn.className = 'code-theme-btn p-2.5 rounded-xl text-left border flex items-center gap-2.5 transition-all border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200';
-      }
-    });
+    // 2. Code Theme Select
+    const codeSelect = this.modal.querySelector('#codeThemeSelect') as HTMLSelectElement;
+    if (codeSelect) {
+      codeSelect.value = s.codeTheme;
+    }
 
     // 3. Font Family buttons
     this.modal.querySelectorAll('.font-family-btn').forEach(btn => {
@@ -336,22 +328,20 @@ export class SettingsModal {
       }
     });
 
-    // Accent Colors
-    this.modal.querySelectorAll('.accent-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const color = btn.getAttribute('data-accent');
-        if (color) this.store.set({ accentColor: color });
-      });
+    // Accent Color Select Dropdown
+    const accentSelect = this.modal.querySelector('#accentColorSelect') as HTMLSelectElement;
+    accentSelect?.addEventListener('change', () => {
+      if (accentSelect.value) {
+        this.store.set({ accentColor: accentSelect.value });
+      }
     });
 
-    // Code Theme (Changes text syntax coloring independently of App theme)
-    this.modal.querySelectorAll('.code-theme-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const theme = btn.getAttribute('data-code-theme') as any;
-        if (theme) {
-          this.store.set({ codeTheme: theme });
-        }
-      });
+    // Code Theme Select Dropdown
+    const codeSelect = this.modal.querySelector('#codeThemeSelect') as HTMLSelectElement;
+    codeSelect?.addEventListener('change', () => {
+      if (codeSelect.value) {
+        this.store.set({ codeTheme: codeSelect.value as any });
+      }
     });
 
     // Custom Font Family Picker
@@ -368,33 +358,32 @@ export class SettingsModal {
     fontSizeRange?.addEventListener('input', (e) => {
       e.stopPropagation();
       const sz = parseFloat(fontSizeRange.value);
-      if (fontSizeVal) fontSizeVal.textContent = `${sz}px`;
-      this.store.set({ fontSize: sz });
+      if (!isNaN(sz)) {
+        if (fontSizeVal) fontSizeVal.textContent = `${sz}px`;
+        this.store.set({ fontSize: sz });
+      }
     });
 
-    // View Mode Toggle
+    // View Mode Toggle Button
     this.modal.querySelector('#viewModeToggleBtn')?.addEventListener('click', () => {
-      const current = this.store.get().viewMode;
-      this.store.set({ viewMode: current === 'desktop' ? 'mobile' : 'desktop' });
+      this.store.toggleViewMode();
     });
 
-    // Expandable Format Categories
-    this.modal.querySelectorAll('[data-toggle-category]').forEach(btn => {
+    // Expandable Format Category Cards Click
+    this.modal.querySelectorAll('.cat-header-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const catId = btn.getAttribute('data-toggle-category');
-        const body = this.modal.querySelector(`#cat-body-${catId}`);
-        const chevron = btn.querySelector('.category-chevron');
-        if (body) {
-          const isHidden = body.classList.contains('hidden');
-          if (isHidden) {
-            body.classList.remove('hidden');
-            chevron?.classList.add('rotate-180');
-          } else {
-            body.classList.add('hidden');
-            chevron?.classList.remove('rotate-180');
-          }
+        const catId = btn.getAttribute('data-cat-id');
+        if (catId) {
+          this.toggleCategory(catId);
         }
       });
+    });
+
+    // Close on clicking modal backdrop
+    this.container.addEventListener('click', (e) => {
+      if (e.target === this.container) {
+        this.close();
+      }
     });
   }
 }

@@ -438,7 +438,10 @@ body.desktop-mode {
 }
 
 body.desktop-mode.desktop-drawer-open #app {
-  margin-left: var(--drawer-width, 280px);
+  margin-left: var(--drawer-width, 280px) !important;
+  width: calc(100vw - var(--drawer-width, 280px)) !important;
+  max-width: calc(100vw - var(--drawer-width, 280px)) !important;
+  overflow-x: hidden !important;
 }
 
 body.desktop-mode .drawer-backdrop {
@@ -550,37 +553,56 @@ body.desktop-mode .accessory-btn {
   color: #1c1917 !important;
 }
 
-[data-theme="light"] header {
+/* Header */
+[data-theme="light"] header,
+[data-theme="light"] .header-container {
   background-color: #f4f3ef !important;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
-[data-theme="light"] header button,
-[data-theme="light"] header .bg-\[\#111115\],
-[data-theme="light"] header .bg-\[\#16161c\],
-[data-theme="light"] header .bg-\[\#121216\] {
-  background-color: #ebe9e3 !important;
+[data-theme="light"] .header-btn,
+[data-theme="light"] .header-file-badge,
+[data-theme="light"] .header-output-btn {
+  background-color: #ffffff !important;
   color: #1c1917 !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
+[data-theme="light"] .header-output-btn svg {
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] .header-file-badge span {
+  color: #1c1917 !important;
+}
+
+/* Tab Bar */
 [data-theme="light"] .tab-bar-container {
   background-color: #f4f3ef !important;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
 [data-theme="light"] .tab-item {
-  background-color: #ebe9e3 !important;
+  background-color: #ffffff !important;
   color: #57534e !important;
-  border-color: rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .tab-item:hover {
+  background-color: #ebe9e3 !important;
+  color: #1c1917 !important;
 }
 
 [data-theme="light"] .tab-item.active {
-  background-color: #fbfbfa !important;
-  color: #1c1917 !important;
-  border-color: var(--accent-color, #6366f1) !important;
+  background-color: var(--accent-color-subtle, rgba(99, 102, 241, 0.12)) !important;
+  color: var(--accent-color, #6366f1) !important;
+  border: 1px solid var(--accent-color, #6366f1) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
 }
 
+/* Accessory Bar */
 [data-theme="light"] .accessory-bar-container {
   background-color: #f4f3ef !important;
   border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
@@ -716,31 +738,46 @@ body.desktop-mode .accessory-btn {
 }
 
 /* Settings Modal */
-[data-theme="light"] .fixed.inset-0.z-50 .bg-\[\#0c0c0f\] {
+[data-theme="light"] .settings-modal-card {
   background-color: #fbfbfa !important;
   color: #1c1917 !important;
   border-color: rgba(0, 0, 0, 0.1) !important;
 }
 
-[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-100,
-[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-200,
-[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-300 {
+[data-theme="light"] .settings-modal-header {
+  background-color: #f4f3ef !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .settings-modal-body {
+  background-color: #fbfbfa !important;
   color: #1c1917 !important;
 }
 
-[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-400,
-[data-theme="light"] .fixed.inset-0.z-50 .text-zinc-500 {
+[data-theme="light"] .settings-modal-card .text-zinc-100,
+[data-theme="light"] .settings-modal-card .text-zinc-200,
+[data-theme="light"] .settings-modal-card .text-zinc-300 {
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] .settings-modal-card .text-zinc-400,
+[data-theme="light"] .settings-modal-card .text-zinc-500 {
   color: #78716c !important;
 }
 
-[data-theme="light"] .accent-btn {
-  background-color: #f4f3ef !important;
-  border-color: rgba(0, 0, 0, 0.08) !important;
+[data-theme="light"] .settings-dropdown {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
 }
 
-[data-theme="light"] .code-theme-btn,
+[data-theme="light"] .settings-dropdown option {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+}
+
 [data-theme="light"] .font-family-btn {
-  background-color: #f4f3ef !important;
+  background-color: #ffffff !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   color: #1c1917 !important;
 }
@@ -749,19 +786,61 @@ body.desktop-mode .accessory-btn {
   background-color: #e5e2dc !important;
 }
 
-[data-theme="light"] #viewModeToggleBtn {
-  background-color: #ebe9e3 !important;
+[data-theme="light"] .layout-mode-card {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
   color: #1c1917 !important;
 }
 
+[data-theme="light"] .layout-mode-card .text-zinc-200 {
+  color: #1c1917 !important;
+}
+
+[data-theme="light"] .layout-mode-card .text-zinc-500 {
+  color: #78716c !important;
+}
+
+[data-theme="light"] .layout-mode-card #viewModeToggleBtn {
+  background-color: #f4f3ef !important;
+  color: #1c1917 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .reset-workspace-card {
+  background-color: #fef2f2 !important;
+  border-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+[data-theme="light"] .reset-workspace-card .text-red-300 {
+  color: #b91c1c !important;
+}
+
+[data-theme="light"] .reset-workspace-card #settingsResetBtn {
+  background-color: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
 [data-theme="light"] .format-category-card {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .format-category-card .cat-header-btn {
+  background-color: #ffffff !important;
+}
+
+[data-theme="light"] .format-category-card .cat-header-btn:hover {
+  background-color: #f4f3ef !important;
+}
+
+[data-theme="light"] .format-category-card .bg-black\/30 {
   background-color: #f4f3ef !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
-[data-theme="light"] .format-category-card .bg-black\/30 {
+[data-theme="light"] .format-category-card .bg-black\/30 .bg-white\/5 {
   background-color: #ffffff !important;
-  border-color: rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
 }
 
 /* AppDialog */
