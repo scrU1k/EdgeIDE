@@ -164,7 +164,7 @@ export class ShareModal {
       deviceName: s.deviceName,
       visibility: s.sharingVisibility
     });
-    this.qrDataUrl = await QRService.generateQRDataUrl(payload, '#ffffff', '#0c0c0f');
+    this.qrDataUrl = await QRService.generateQRDataUrl(payload, '#000000', '#ffffff');
   }
 
   private render(): void {

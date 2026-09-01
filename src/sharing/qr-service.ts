@@ -3,14 +3,14 @@ import jsQR from 'jsqr';
 
 export class QRService {
   /**
-   * Generates a data URL for a QR Code image completely offline.
+   * Generates a data URL for a QR Code image completely offline (high contrast black on white).
    */
   public static async generateQRDataUrl(data: string, darkColor: string = '#000000', lightColor: string = '#ffffff'): Promise<string> {
     try {
       return await QRCode.toDataURL(data, {
         errorCorrectionLevel: 'M',
         margin: 2,
-        width: 320,
+        width: 360,
         color: {
           dark: darkColor,
           light: lightColor
@@ -23,8 +23,8 @@ export class QRService {
   }
 
   /**
-   * Starts a camera stream on the provided video element and scans for QR codes continuously.
-   * Returns a cleanup function that stops the camera tracks and scanning loop.
+   * Starts a high-performance camera stream on the provided video element and scans for QR codes continuously.
+   * Leverages hardware-accelerated BarcodeDetector where available with jsQR fallback.
    */
   public static startCameraScanner(
     videoElement: HTMLVideoElement,
@@ -36,13 +36,22 @@ export class QRService {
     let stream: MediaStream | null = null;
     let animationFrameId: number | null = null;
 
+    let barcodeDetector: any = null;
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        barcodeDetector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+      } catch (e) {
+        barcodeDetector = null;
+      }
+    }
+
     const ctx = canvasElement.getContext('2d', { willReadFrequently: true });
 
     async function initCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { 
-            facingMode: 'environment',
+            facingMode: { ideal: 'environment' },
             width: { ideal: 1280 },
             height: { ideal: 720 }
           }
@@ -66,24 +75,46 @@ export class QRService {
       }
     }
 
-    function tick() {
+    async function tick() {
       if (!isScanning) return;
 
-      if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA && ctx) {
-        canvasElement.height = videoElement.videoHeight;
-        canvasElement.width = videoElement.videoWidth;
-        ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+      const hasVideoFrame = videoElement.readyState >= 2 && videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
 
-        const imageData = ctx.getImageData(0, 0, canvasElement.width, canvasElement.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'dontInvert'
-        });
+      if (hasVideoFrame) {
+        // 1. Try hardware-accelerated BarcodeDetector (instant on Android Chrome / WebView)
+        if (barcodeDetector) {
+          try {
+            const barcodes = await barcodeDetector.detect(videoElement);
+            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+              isScanning = false;
+              navigator.vibrate?.(80);
+              onSuccess(barcodes[0].rawValue);
+              cleanup();
+              return;
+            }
+          } catch (detErr) {
+            // Fall through to jsQR
+          }
+        }
 
-        if (code && code.data) {
-          isScanning = false;
-          onSuccess(code.data);
-          cleanup();
-          return;
+        // 2. jsQR engine with attemptBoth for maximum accuracy
+        if (ctx) {
+          canvasElement.height = videoElement.videoHeight;
+          canvasElement.width = videoElement.videoWidth;
+          ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+
+          const imageData = ctx.getImageData(0, 0, canvasElement.width, canvasElement.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'attemptBoth'
+          });
+
+          if (code && code.data) {
+            isScanning = false;
+            navigator.vibrate?.(80);
+            onSuccess(code.data);
+            cleanup();
+            return;
+          }
         }
       }
 

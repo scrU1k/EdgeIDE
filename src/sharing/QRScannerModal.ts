@@ -116,25 +116,33 @@ export class QRScannerModal {
 
   private handleScanResult(data: string): void {
     try {
-      const parsed = JSON.parse(data);
-      if (parsed && parsed.deviceId) {
+      const parsed = typeof data === 'object' ? data : JSON.parse(data);
+      if (parsed && (parsed.deviceId || parsed.id)) {
         if (this.stopScanner) {
           this.stopScanner();
           this.stopScanner = null;
         }
 
-        const name = parsed.deviceName || 'Device';
+        const id = parsed.deviceId || parsed.id;
+        const name = parsed.deviceName || parsed.name || 'Device';
         this.scannedDevice = {
-          deviceId: parsed.deviceId,
+          deviceId: id,
           deviceName: name,
-          visibility: parsed.visibility
+          visibility: parsed.visibility || 'everyone'
         };
 
         // Auto-register peer
         this.renderActionSheet();
         return;
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Scanned non-JSON QR payload:', data, e);
+    }
+
+    if (this.stopScanner) {
+      this.stopScanner();
+      this.stopScanner = null;
+    }
 
     const statusEl = this.container.querySelector('#scannerStatusText');
     if (statusEl) {
