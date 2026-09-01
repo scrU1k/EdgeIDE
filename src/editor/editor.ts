@@ -21,7 +21,9 @@ export class CodeEditor {
   private themeCompartment = new Compartment();
   private fontCompartment = new Compartment();
   private wordWrapCompartment = new Compartment();
+  private lineNumbersCompartment = new Compartment();
   private isWordWrap: boolean = false;
+  private showLineNumbers: boolean = true;
   private isMultiCursorMode: boolean = false;
   private currentLanguage: SupportedLanguage = 'plaintext';
   private onChangeCallback: ((content: string) => void) | null = null;
@@ -42,11 +44,9 @@ export class CodeEditor {
       extensions: [
         EditorState.allowMultipleSelections.of(true),
         drawSelection(),
-        lineNumbers(),
-        highlightActiveLineGutter(),
+        this.lineNumbersCompartment.of([lineNumbers(), highlightActiveLineGutter(), foldGutter()]),
         highlightActiveLine(),
         history(),
-        foldGutter(),
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
@@ -367,6 +367,21 @@ export class CodeEditor {
 
   public getIsWordWrap(): boolean {
     return this.isWordWrap;
+  }
+
+  public toggleLineNumbers(): boolean {
+    if (!this.view) return false;
+    this.showLineNumbers = !this.showLineNumbers;
+    this.view.dispatch({
+      effects: this.lineNumbersCompartment.reconfigure(
+        this.showLineNumbers ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : []
+      )
+    });
+    return this.showLineNumbers;
+  }
+
+  public getShowLineNumbers(): boolean {
+    return this.showLineNumbers;
   }
 
   public goToLine(lineNum: number): boolean {

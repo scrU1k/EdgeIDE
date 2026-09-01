@@ -128,6 +128,17 @@ export class EditorActionMenu {
         <span id="wordWrapStatusBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-400">Off</span>
       </button>
 
+      <!-- Toggle Line Numbers (Hide / Show) -->
+      <button data-action="toggle-line-numbers" class="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200 font-medium transition-colors">
+        <div class="flex items-center gap-2.5">
+          <svg class="w-4 h-4 text-teal-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+          </svg>
+          <span id="lineNumbersLabel">Hide Line Numbers</span>
+        </div>
+        <span id="lineNumbersStatusBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-400">On</span>
+      </button>
+
       <!-- Toggle Comment -->
       <button data-action="comment" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200 font-medium transition-colors">
         <svg class="w-4 h-4 text-pink-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -305,6 +316,13 @@ export class EditorActionMenu {
             const badge = this.menuDropdown.querySelector('#wordWrapStatusBadge');
             if (badge) badge.textContent = isWrap ? 'On' : 'Off';
             break;
+          case 'toggle-line-numbers':
+            const showNums = this.editor.toggleLineNumbers();
+            const labelEl = this.menuDropdown.querySelector('#lineNumbersLabel');
+            const numBadgeEl = this.menuDropdown.querySelector('#lineNumbersStatusBadge');
+            if (labelEl) labelEl.textContent = showNums ? 'Hide Line Numbers' : 'Show Line Numbers';
+            if (numBadgeEl) numBadgeEl.textContent = showNums ? 'On' : 'Off';
+            break;
           case 'comment':
             this.editor.toggleComment();
             break;
@@ -394,6 +412,19 @@ export class EditorActionMenu {
 
   public openMenu(): void {
     this.isMenuOpen = true;
+
+    // Sync line numbers label and badge
+    const showNums = this.editor.getShowLineNumbers();
+    const lineNumbersLabel = this.menuDropdown.querySelector('#lineNumbersLabel');
+    const lineNumbersBadge = this.menuDropdown.querySelector('#lineNumbersStatusBadge');
+    if (lineNumbersLabel) lineNumbersLabel.textContent = showNums ? 'Hide Line Numbers' : 'Show Line Numbers';
+    if (lineNumbersBadge) lineNumbersBadge.textContent = showNums ? 'On' : 'Off';
+
+    // Sync word wrap badge
+    const isWrap = this.editor.getIsWordWrap();
+    const wordWrapBadge = this.menuDropdown.querySelector('#wordWrapStatusBadge');
+    if (wordWrapBadge) wordWrapBadge.textContent = isWrap ? 'On' : 'Off';
+
     this.menuDropdown.classList.remove('hidden');
     void this.menuDropdown.offsetWidth;
     this.menuDropdown.classList.remove('scale-95', 'opacity-0');
