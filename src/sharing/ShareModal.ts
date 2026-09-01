@@ -2,7 +2,7 @@ import { P2PEngine, TransferFile, ActiveTransfer, TransferEvent } from './p2p-en
 import { SettingsStore } from '../settings/settings-store';
 import { VirtualFileSystem } from '../vfs/vfs';
 import { QRService } from './qr-service';
-import { Icons } from '../components/icons';
+import { Icons, getFileIcon } from '../components/icons';
 import { Share } from '@capacitor/share';
 
 export class ShareModal {
@@ -11,8 +11,8 @@ export class ShareModal {
   private p2pEngine: P2PEngine;
   private settingsStore: SettingsStore;
   private vfs: VirtualFileSystem;
-  private targetFileId: string | null = null;
-  private shareMode: 'active_file' | 'all_files' = 'active_file';
+  private selectedFileIds: Set<string> = new Set();
+  private isSelectingFiles: boolean = false;
   private qrDataUrl: string | null = null;
   private isShowingQrCode: boolean = false;
   private incomingPrompt: {
@@ -44,10 +44,25 @@ export class ShareModal {
   }
 
   public open(fileId?: string): void {
-    this.targetFileId = fileId || null;
-    this.shareMode = 'active_file';
+    this.isSelectingFiles = false;
     this.isShowingQrCode = false;
     this.incomingPrompt = null;
+    this.selectedFileIds.clear();
+
+    if (fileId) {
+      this.selectedFileIds.add(fileId);
+    } else {
+      const active = this.vfs.getActiveFile();
+      if (active) {
+        this.selectedFileIds.add(active.id);
+      } else {
+        const all = this.vfs.getAllFiles();
+        if (all.length > 0) {
+          this.selectedFileIds.add(all[0].id);
+        }
+      }
+    }
+
     this.container.classList.remove('hidden');
     this.render();
   }
@@ -55,13 +70,14 @@ export class ShareModal {
   public close(): void {
     this.container.classList.add('hidden');
     this.isShowingQrCode = false;
+    this.isSelectingFiles = false;
   }
 
   private handleP2PEvent(ev: TransferEvent): void {
     switch (ev.type) {
       case 'peer_discovered':
       case 'peer_lost':
-        if (!this.container.classList.contains('hidden') && !this.p2pEngine.getActiveTransfer()) {
+        if (!this.container.classList.contains('hidden') && !this.p2pEngine.getActiveTransfer() && !this.isSelectingFiles) {
           this.render();
         }
         break;
@@ -91,25 +107,22 @@ export class ShareModal {
   }
 
   private getFilesToShare(): TransferFile[] {
-    if (this.shareMode === 'all_files') {
-      return this.vfs.getAllFiles().map(f => ({
-        name: f.name,
-        size: f.content.length,
-        content: f.content
-      }));
+    const allFiles = this.vfs.getAllFiles();
+    const selected = allFiles.filter(f => this.selectedFileIds.has(f.id));
+    
+    if (selected.length === 0 && allFiles.length > 0) {
+      return [{
+        name: allFiles[0].name,
+        size: allFiles[0].content.length,
+        content: allFiles[0].content
+      }];
     }
 
-    const active = this.targetFileId 
-      ? this.vfs.getFile(this.targetFileId) 
-      : this.vfs.getActiveFile();
-
-    if (!active) return [];
-
-    return [{
-      name: active.name,
-      size: active.content.length,
-      content: active.content
-    }];
+    return selected.map(f => ({
+      name: f.name,
+      size: f.content.length,
+      content: f.content
+    }));
   }
 
   private async handleSystemShare(): Promise<void> {
@@ -132,7 +145,6 @@ export class ShareModal {
         }
       }
 
-      // Fallback using Capacitor Share
       const summaryText = files.map(f => `--- ${f.name} ---\n${f.content}\n`).join('\n');
       await Share.share({
         title: `EdgeIDE Files (${files.length})`,
@@ -172,6 +184,11 @@ export class ShareModal {
       return;
     }
 
+    if (this.isSelectingFiles) {
+      this.renderFileSelectView();
+      return;
+    }
+
     this.renderSendView();
   }
 
@@ -200,19 +217,17 @@ export class ShareModal {
       <!-- Body -->
       <div class="settings-modal-body flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs text-zinc-300">
         
-        <!-- File Scope Selection -->
+        <!-- File Scope Selection Card with Select Button -->
         <div class="p-3 bg-[#141418] border border-white/5 rounded-xl flex items-center justify-between">
-          <div>
-            <div class="font-semibold text-zinc-200 truncate max-w-[200px]">
-              ${this.shareMode === 'active_file' ? (files[0]?.name || 'Current File') : `Entire Workspace (${files.length} files)`}
+          <div class="min-w-0 pr-2">
+            <div class="font-semibold text-zinc-200 truncate">
+              ${files.length === 1 ? files[0].name : `${files.length} files selected`}
             </div>
             <div class="text-[11px] text-zinc-400 font-mono">${sizeStr}</div>
           </div>
-          <div class="flex items-center gap-1.5">
-            <button id="toggleFileScopeBtn" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 font-medium text-[11px] transition-colors">
-              ${this.shareMode === 'active_file' ? 'Switch to All Files' : 'Switch to Single File'}
-            </button>
-          </div>
+          <button id="openFileSelectBtn" class="px-3.5 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 font-semibold text-xs transition-all active:scale-95 shrink-0">
+            Select
+          </button>
         </div>
 
         <!-- Discovered Local Devices (Radar) -->
@@ -283,11 +298,122 @@ export class ShareModal {
     this.attachSendEvents();
   }
 
+  private renderFileSelectView(): void {
+    const allFiles = this.vfs.getAllFiles();
+    const isAllSelected = allFiles.length > 0 && this.selectedFileIds.size === allFiles.length;
+
+    this.modal.innerHTML = `
+      <!-- Header -->
+      <div class="settings-modal-header flex items-center justify-between px-5 py-4 bg-[#0c0c0f] border-b border-white/5 shrink-0">
+        <div class="flex items-center gap-2">
+          <button id="fileSelectBackBtn" class="p-1 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-zinc-200">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+          </button>
+          <h2 class="font-bold text-sm text-zinc-100">Select Files to Share</h2>
+        </div>
+        <button id="fileSelectCloseBtn" class="p-1.5 rounded-xl hover:bg-white/5 text-zinc-400 hover:text-zinc-200">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Action Bar (Select All / Deselect All) -->
+      <div class="px-5 py-2.5 bg-[#101014] border-b border-white/5 flex items-center justify-between text-xs">
+        <button id="selectAllFilesBtn" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-zinc-200 font-semibold text-[11px] transition-colors">
+          ${isAllSelected ? 'Deselect All' : `Select All (${allFiles.length})`}
+        </button>
+        <span class="text-[11px] font-mono text-zinc-400">
+          ${this.selectedFileIds.size} of ${allFiles.length} selected
+        </span>
+      </div>
+
+      <!-- File List with Checkboxes -->
+      <div class="settings-modal-body flex-1 overflow-y-auto px-5 py-3 space-y-2 text-xs text-zinc-300 max-h-80">
+        ${allFiles.map(f => {
+          const isSelected = this.selectedFileIds.has(f.id);
+          const sizeKb = (f.content.length / 1024).toFixed(1);
+          return `
+            <div data-file-id="${f.id}" class="file-item-row p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+              isSelected 
+                ? 'bg-indigo-500/15 border-indigo-500/40 text-white' 
+                : 'bg-[#141418] border-white/5 hover:bg-white/5 text-zinc-300'
+            }">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                  isSelected ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/30 bg-black/40'
+                }">
+                  ${isSelected ? `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>` : ''}
+                </div>
+                <span class="shrink-0">${getFileIcon(f.language)}</span>
+                <span class="font-mono text-xs truncate">${f.name}</span>
+              </div>
+              <span class="font-mono text-[10px] text-zinc-400 shrink-0 ml-2">${sizeKb} KB</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- Footer Done Button -->
+      <div class="p-4 bg-[#0c0c0f] border-t border-white/5 shrink-0">
+        <button id="confirmFileSelectionBtn" class="w-full py-2.5 rounded-xl font-semibold text-xs text-white transition-all shadow-md active:scale-95" style="background-color: var(--accent-color);">
+          Done (${this.selectedFileIds.size} files)
+        </button>
+      </div>
+    `;
+
+    this.attachFileSelectEvents();
+  }
+
+  private attachFileSelectEvents(): void {
+    this.modal.querySelector('#fileSelectBackBtn')?.addEventListener('click', () => {
+      this.isSelectingFiles = false;
+      this.render();
+    });
+
+    this.modal.querySelector('#fileSelectCloseBtn')?.addEventListener('click', () => this.close());
+
+    this.modal.querySelector('#selectAllFilesBtn')?.addEventListener('click', () => {
+      const allFiles = this.vfs.getAllFiles();
+      if (this.selectedFileIds.size === allFiles.length) {
+        this.selectedFileIds.clear();
+      } else {
+        allFiles.forEach(f => this.selectedFileIds.add(f.id));
+      }
+      this.renderFileSelectView();
+    });
+
+    this.modal.querySelectorAll('.file-item-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const fileId = row.getAttribute('data-file-id');
+        if (fileId) {
+          if (this.selectedFileIds.has(fileId)) {
+            this.selectedFileIds.delete(fileId);
+          } else {
+            this.selectedFileIds.add(fileId);
+          }
+          this.renderFileSelectView();
+        }
+      });
+    });
+
+    this.modal.querySelector('#confirmFileSelectionBtn')?.addEventListener('click', () => {
+      if (this.selectedFileIds.size === 0) {
+        const all = this.vfs.getAllFiles();
+        if (all.length > 0) this.selectedFileIds.add(all[0].id);
+      }
+      this.isSelectingFiles = false;
+      this.render();
+    });
+  }
+
   private attachSendEvents(): void {
     this.modal.querySelector('#shareModalCloseBtn')?.addEventListener('click', () => this.close());
 
-    this.modal.querySelector('#toggleFileScopeBtn')?.addEventListener('click', () => {
-      this.shareMode = this.shareMode === 'active_file' ? 'all_files' : 'active_file';
+    this.modal.querySelector('#openFileSelectBtn')?.addEventListener('click', () => {
+      this.isSelectingFiles = true;
       this.render();
     });
 

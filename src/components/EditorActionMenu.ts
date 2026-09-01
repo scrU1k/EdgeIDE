@@ -33,11 +33,11 @@ export class EditorActionMenu {
     this.container = document.createElement('div');
     this.container.className = 'editor-action-menu-container absolute inset-0 pointer-events-none select-none z-30';
 
-    // Standalone Share FAB Button (Situated to the left of the Editor Action FAB)
+    // Standalone Share FAB Button (Hidden by default, appears to the left of the first line of menu when hamburger is open)
     this.shareFabBtn = document.createElement('button');
     this.shareFabBtn.id = 'shareFabBtn';
     this.shareFabBtn.title = 'Direct Share & Sync';
-    this.shareFabBtn.className = 'pointer-events-auto absolute top-2.5 right-13 p-2 rounded-xl bg-[#121216]/90 hover:bg-[#1c1c22] border border-white/10 hover:border-white/20 text-zinc-300 hover:text-white shadow-lg active:scale-95 transition-all flex items-center justify-center';
+    this.shareFabBtn.className = 'pointer-events-none absolute top-12 right-61 p-2.5 rounded-xl bg-[#121216] hover:bg-[#1c1c22] border border-white/10 hover:border-white/20 text-zinc-300 hover:text-white shadow-2xl active:scale-95 transition-all flex items-center justify-center hidden opacity-0 scale-95 z-40';
     this.shareFabBtn.innerHTML = `
       <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
@@ -458,9 +458,12 @@ export class EditorActionMenu {
     if (wordWrapBadge) wordWrapBadge.textContent = isWrap ? 'On' : 'Off';
 
     this.menuDropdown.classList.remove('hidden');
+    this.shareFabBtn.classList.remove('hidden', 'opacity-0', 'scale-95', 'pointer-events-none');
     void this.menuDropdown.offsetWidth;
+    void this.shareFabBtn.offsetWidth;
     this.menuDropdown.classList.remove('scale-95', 'opacity-0');
     this.menuDropdown.classList.add('scale-100', 'opacity-100');
+    this.shareFabBtn.classList.add('scale-100', 'opacity-100', 'pointer-events-auto');
   }
 
   public closeMenu(): void {
@@ -468,8 +471,13 @@ export class EditorActionMenu {
     this.isMenuOpen = false;
     this.menuDropdown.classList.remove('scale-100', 'opacity-100');
     this.menuDropdown.classList.add('scale-95', 'opacity-0');
+    this.shareFabBtn.classList.remove('scale-100', 'opacity-100', 'pointer-events-auto');
+    this.shareFabBtn.classList.add('scale-95', 'opacity-0', 'pointer-events-none');
     setTimeout(() => {
-      if (!this.isMenuOpen) this.menuDropdown.classList.add('hidden');
+      if (!this.isMenuOpen) {
+        this.menuDropdown.classList.add('hidden');
+        this.shareFabBtn.classList.add('hidden');
+      }
     }, 150);
   }
 
