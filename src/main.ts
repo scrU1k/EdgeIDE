@@ -49,7 +49,15 @@ class MobileApp {
   }
 
   private setupUI(): void {
-    // 1. Settings Modal
+    // 1. Share Modal
+    this.shareModal = new ShareModal(
+      document.body,
+      this.p2pEngine,
+      this.settingsStore,
+      this.vfs
+    );
+
+    // 2. Settings Modal
     this.settingsModal = new SettingsModal(
       document.body, 
       this.settingsStore, 
@@ -59,15 +67,11 @@ class MobileApp {
         if (active) {
           this.switchFile(active.id);
         }
-      }
-    );
-
-    // 2. Share Modal
-    this.shareModal = new ShareModal(
-      document.body,
+      },
       this.p2pEngine,
-      this.settingsStore,
-      this.vfs
+      (_device) => {
+        this.shareModal.open();
+      }
     );
 
     // 3. File Tree Drawer

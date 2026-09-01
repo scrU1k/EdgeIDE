@@ -36,6 +36,7 @@ export type TransferEvent =
   | { type: 'peer_discovered'; peer: PeerDevice }
   | { type: 'peer_lost'; peerId: string }
   | { type: 'incoming_request'; transferId: string; senderId: string; senderName: string; files: TransferFile[]; totalBytes: number; requiresPin: boolean; expectedPin?: string }
+  | { type: 'file_requested'; requesterId: string; requesterName: string }
   | { type: 'transfer_progress'; transfer: ActiveTransfer }
   | { type: 'transfer_completed'; transfer: ActiveTransfer }
   | { type: 'transfer_error'; transferId: string; error: string }
@@ -240,11 +241,33 @@ export class P2PEngine {
     }
   }
 
+  /**
+   * Request files from a target peer (Pull Request).
+   */
+  public requestFilesFromPeer(targetPeerId: string): void {
+    const s = this.settingsStore.get();
+    this.channel.postMessage({
+      type: 'pull_request',
+      requesterId: s.deviceId,
+      requesterName: s.deviceName,
+      targetId: targetPeerId
+    });
+  }
+
   private handleMessage(data: any): void {
     if (!data || !data.type) return;
     const myId = this.settingsStore.get().deviceId;
 
     switch (data.type) {
+      case 'pull_request': {
+        if (data.targetId !== myId) return;
+        this.emit({
+          type: 'file_requested',
+          requesterId: data.requesterId,
+          requesterName: data.requesterName
+        });
+        break;
+      }
       case 'presence': {
         if (data.deviceId === myId) return;
         const peer: PeerDevice = {

@@ -47,7 +47,14 @@ export class SettingsModal {
   private qrDataUrl: string | null = null;
   private qrScannerModal: QRScannerModal;
 
-  constructor(parent: HTMLElement, store: SettingsStore, vfs?: VirtualFileSystem, onResetCallback?: () => void) {
+  constructor(
+    parent: HTMLElement, 
+    store: SettingsStore, 
+    vfs?: VirtualFileSystem, 
+    onResetCallback?: () => void,
+    p2pEngine?: any,
+    onSendToDevice?: (device: any) => void
+  ) {
     this.store = store;
     this.vfs = vfs;
     this.onResetCallback = onResetCallback;
@@ -60,9 +67,18 @@ export class SettingsModal {
     this.container.appendChild(this.modal);
     parent.appendChild(this.container);
 
-    this.qrScannerModal = new QRScannerModal(parent, this.store, () => {
-      this.render();
-    });
+    this.qrScannerModal = new QRScannerModal(
+      parent, 
+      this.store, 
+      p2pEngine,
+      (device) => {
+        if (onSendToDevice) {
+          onSendToDevice(device);
+        } else {
+          this.render();
+        }
+      }
+    );
 
     this.store.subscribe((s) => {
       this.updateActiveStyles(s);
