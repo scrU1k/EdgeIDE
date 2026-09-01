@@ -29,19 +29,85 @@ export const FONT_FAMILIES = [
   { name: 'Monospace (System)', value: 'monospace' }
 ];
 
-export const SUPPORTED_FORMATS = [
-  { ext: '.py', name: 'Python', engine: 'Pyodide WASM (CPython 3.12)', run: true },
-  { ext: '.js / .mjs', name: 'JavaScript', engine: 'Browser Native Engine', run: true },
-  { ext: '.ts', name: 'TypeScript', engine: 'Browser Native Engine', run: true },
-  { ext: '.html', name: 'HTML5', engine: 'Sandboxed Live Web Preview', run: true },
-  { ext: '.css', name: 'CSS3', engine: 'Sandboxed Live Web Preview', run: true },
-  { ext: '.cpp / .c', name: 'C / C++', engine: 'Clang/WASI syntax highlighter', run: false },
-  { ext: '.json', name: 'JSON', engine: 'Validator & Highlighter', run: false },
-  { ext: '.md', name: 'Markdown', engine: 'Syntax Highlighter', run: false },
-  { ext: '.rs', name: 'Rust', engine: 'Syntax Highlighter', run: false },
-  { ext: '.java', name: 'Java', engine: 'Syntax Highlighter', run: false },
-  { ext: '.php', name: 'PHP', engine: 'Syntax Highlighter', run: false }
+export interface FormatItem {
+  ext: string;
+  name: string;
+  engine: string;
+  badge: 'Runnable' | 'Live Preview' | 'Syntax' | 'Personal Dict' | 'Validator';
+}
+
+export interface FormatCategory {
+  id: string;
+  title: string;
+  description: string;
+  formats: FormatItem[];
+}
+
+export const FORMAT_CATEGORIES: FormatCategory[] = [
+  {
+    id: 'programming',
+    title: 'Programming & Scripting',
+    description: 'General purpose code, scripting, mobile & systems languages',
+    formats: [
+      { ext: '.py', name: 'Python 3.12', engine: 'Pyodide WASM + pip packages', badge: 'Runnable' },
+      { ext: '.js / .mjs', name: 'JavaScript', engine: 'Browser Native V8 Engine', badge: 'Runnable' },
+      { ext: '.ts', name: 'TypeScript', engine: 'Browser Engine & Type Linter', badge: 'Runnable' },
+      { ext: '.jsx / .tsx', name: 'React / Vite Sandbox', engine: 'Interactive Component Live Preview', badge: 'Live Preview' },
+      { ext: '.rb / .erb', name: 'Ruby', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' },
+      { ext: '.swift', name: 'Swift', engine: 'Syntax Highlighter & SwiftUI Snippets', badge: 'Syntax' },
+      { ext: '.go', name: 'Go (Golang)', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' },
+      { ext: '.jl', name: 'Julia', engine: 'Syntax Highlighter & Math Snippets', badge: 'Syntax' },
+      { ext: '.kt / .kts', name: 'Kotlin', engine: 'Syntax Highlighter & Android Snippets', badge: 'Syntax' },
+      { ext: '.ps1', name: 'PowerShell', engine: 'Script Syntax & Command Highlighter', badge: 'Syntax' },
+      { ext: '.r / .rmd', name: 'R / RMarkdown', engine: 'Data & Statistics Syntax Highlighter', badge: 'Syntax' },
+      { ext: '.cpp / .c', name: 'C / C++', engine: 'Clang/WASI Syntax Highlighter', badge: 'Syntax' },
+      { ext: '.rs', name: 'Rust', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' },
+      { ext: '.java', name: 'Java', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' },
+      { ext: '.php', name: 'PHP', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' }
+    ]
+  },
+  {
+    id: 'web',
+    title: 'Web & Frontend Development',
+    description: 'HTML5, CSS3 stylesheets and structured data',
+    formats: [
+      { ext: '.html', name: 'HTML5', engine: 'Sandboxed Live Web Sandbox', badge: 'Live Preview' },
+      { ext: '.css', name: 'CSS3', engine: 'Sandboxed Live Web Sandbox', badge: 'Live Preview' },
+      { ext: '.json', name: 'JSON', engine: 'Formatter, Schema Validator & Linter', badge: 'Validator' }
+    ]
+  },
+  {
+    id: 'database',
+    title: 'Database & Queries',
+    description: 'Relational data, query scripts and table schemas',
+    formats: [
+      { ext: '.sql', name: 'SQL / SQLite', engine: 'ANSI SQL & SQLite Query Syntax Highlighter', badge: 'Syntax' }
+    ]
+  },
+  {
+    id: 'notes',
+    title: 'Notes, Documents & Outlines',
+    description: 'Dedicated personal learned dictionary & interactive task sync',
+    formats: [
+      { ext: '.md', name: 'Markdown', engine: 'Interactive Checklist Live Sync & Preview', badge: 'Live Preview' },
+      { ext: '.txt', name: 'Plain Text', engine: 'Scratchpad & Personal Learned Dict', badge: 'Personal Dict' },
+      { ext: '.org', name: 'Org-Mode', engine: 'Outlines, Headings & Personal Learned Dict', badge: 'Personal Dict' },
+      { ext: '.rst', name: 'reStructuredText', engine: 'Technical Docs & Personal Learned Dict', badge: 'Personal Dict' },
+      { ext: '.adoc', name: 'AsciiDoc', engine: 'Drafts, Articles & Personal Learned Dict', badge: 'Personal Dict' },
+      { ext: '.log', name: 'Devlog / Journal', engine: 'Daily Logs, Changelogs & Personal Dict', badge: 'Personal Dict' },
+      { ext: '.todo', name: 'Task Checklist', engine: 'Plain Text Task Lists & Personal Dict', badge: 'Personal Dict' }
+    ]
+  }
 ];
+
+export const SUPPORTED_FORMATS = FORMAT_CATEGORIES.flatMap(cat => 
+  cat.formats.map(f => ({
+    ext: f.ext,
+    name: f.name,
+    engine: f.engine,
+    run: f.badge === 'Runnable' || f.badge === 'Live Preview'
+  }))
+);
 
 const SETTINGS_KEY = 'edge_ide_settings_v4';
 
@@ -128,6 +194,8 @@ export class SettingsStore {
     root.style.setProperty('--editor-font-size', `${this.settings.fontSize}px`);
     root.style.setProperty('--editor-font-family', this.settings.fontFamily);
     
+    root.setAttribute('data-theme', this.settings.themeMode);
+
     if (this.settings.themeMode === 'light') {
       root.classList.remove('dark');
       root.classList.add('light');

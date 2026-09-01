@@ -85,7 +85,7 @@ class MobileApp {
 
     // 5. Editor Container
     this.editorContainer = document.createElement('main');
-    this.editorContainer.className = 'flex-1 overflow-hidden relative bg-[#000000]';
+    this.editorContainer.className = 'editor-main-container flex-1 overflow-hidden relative';
     this.appRoot.appendChild(this.editorContainer);
 
     const activeFile = this.vfs.getActiveFile();

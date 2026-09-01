@@ -96,25 +96,30 @@ const monokaiHighlight = HighlightStyle.define([
   { tag: [t.comment], color: '#75715e', fontStyle: 'italic' }
 ]);
 
-// 5. Clean Light Theme
+// 5. Clean Soft Warm Light Theme
 const lightCleanTheme = EditorView.theme({
-  '&': { backgroundColor: '#ffffff', color: '#0f172a' },
+  '&': { backgroundColor: '#fbfbfa', color: '#1c1917' },
   '.cm-content': { caretColor: 'var(--accent-color, #6366f1)' },
   '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--accent-color, #6366f1)' },
-  '.cm-gutters': { backgroundColor: '#f8fafc', color: '#94a3b8' },
-  '.cm-activeLine': { backgroundColor: 'rgba(99, 102, 241, 0.06)' },
-  '.cm-activeLineGutter': { color: 'var(--accent-color, #6366f1) !important' }
+  '.cm-gutters': { backgroundColor: '#f4f3ef', color: '#9ca3af', borderRight: '1px solid rgba(0, 0, 0, 0.06)' },
+  '.cm-activeLine': { backgroundColor: 'rgba(0, 0, 0, 0.03)' },
+  '.cm-activeLineGutter': { color: 'var(--accent-color, #6366f1) !important', backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+  '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--accent-color-subtle, rgba(99, 102, 241, 0.18)) !important' }
 }, { dark: false });
 
 const lightCleanHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#7c3aed', fontWeight: 'bold' },
-  { tag: [t.name, t.propertyName], color: '#0f172a' },
-  { tag: [t.function(t.variableName)], color: '#2563eb' },
-  { tag: [t.typeName, t.className], color: '#0891b2' },
-  { tag: [t.number, t.bool], color: '#d97706' },
-  { tag: [t.operator], color: '#e11d48' },
-  { tag: [t.string], color: '#16a34a' },
-  { tag: [t.comment], color: '#94a3b8', fontStyle: 'italic' }
+  { tag: [t.name, t.propertyName, t.definition(t.name)], color: '#1c1917' },
+  { tag: [t.function(t.variableName), t.labelName], color: '#2563eb' },
+  { tag: [t.typeName, t.className, t.namespace], color: '#0f766e' },
+  { tag: [t.number, t.bool, t.atom], color: '#b45309' },
+  { tag: [t.operator, t.operatorKeyword, t.punctuation], color: '#be185d' },
+  { tag: [t.string, t.character], color: '#15803d' },
+  { tag: [t.comment, t.meta], color: '#78716c', fontStyle: 'italic' },
+  { tag: t.strong, fontWeight: 'bold' },
+  { tag: t.emphasis, fontStyle: 'italic' },
+  { tag: t.link, color: '#2563eb', textDecoration: 'underline' },
+  { tag: t.heading, fontWeight: 'bold', color: '#4338ca' }
 ]);
 
 export function getCodeThemeExtensions(themeName: string): Extension[] {

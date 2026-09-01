@@ -11,6 +11,8 @@ export function detectLanguage(filename: string): SupportedLanguage {
     case 'mjs':
     case 'cjs': return 'javascript';
     case 'ts': return 'typescript';
+    case 'jsx':
+    case 'tsx': return 'react';
     case 'html':
     case 'htm': return 'html';
     case 'css': return 'css';
@@ -19,9 +21,45 @@ export function detectLanguage(filename: string): SupportedLanguage {
     case 'h':
     case 'hpp': return 'cpp';
     case 'json': return 'json';
-    case 'md': return 'markdown';
+    case 'rb':
+    case 'erb': return 'ruby';
+    case 'swift': return 'swift';
+    case 'go': return 'go';
+    case 'jl': return 'julia';
+    case 'ps1':
+    case 'psm1':
+    case 'psd1': return 'powershell';
+    case 'r':
+    case 'rmd': return 'r';
+    case 'sql': return 'sql';
+    case 'kt':
+    case 'kts': return 'kotlin';
+    case 'rs': return 'rust';
+    case 'java': return 'java';
+    case 'php': return 'php';
+    case 'md':
+    case 'markdown': return 'markdown';
+    case 'org': return 'org';
+    case 'rst': return 'rst';
+    case 'adoc':
+    case 'asciidoc': return 'adoc';
+    case 'log': return 'log';
+    case 'todo':
+    case 'task': return 'todo';
     default: return 'plaintext';
   }
+}
+
+export function isNoteFormat(language: SupportedLanguage): boolean {
+  return [
+    'markdown',
+    'org',
+    'rst',
+    'adoc',
+    'log',
+    'todo',
+    'plaintext'
+  ].includes(language);
 }
 
 const DEFAULT_NODES: Record<string, VirtualNode> = {

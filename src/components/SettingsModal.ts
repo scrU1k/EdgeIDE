@@ -1,4 +1,4 @@
-import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, SUPPORTED_FORMATS, AppSettings } from '../settings/settings-store';
+import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, FORMAT_CATEGORIES, AppSettings } from '../settings/settings-store';
 import { Icons } from './icons';
 import { AppDialog } from './AppDialog';
 import { VirtualFileSystem } from '../vfs/vfs';
@@ -25,7 +25,7 @@ export class SettingsModal {
     this.backdrop.addEventListener('click', () => this.close());
 
     this.modal = document.createElement('div');
-    this.modal.className = 'absolute inset-x-4 bottom-4 top-16 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[520px] md:max-h-[85vh] bg-[#0c0c0f] rounded-2xl flex flex-col shadow-2xl overflow-hidden select-none border border-white/5 transform scale-95 opacity-0 transition-all duration-200';
+    this.modal.className = 'absolute inset-x-4 bottom-4 top-16 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[560px] md:max-h-[85vh] bg-[#0c0c0f] rounded-2xl flex flex-col shadow-2xl overflow-hidden select-none border border-white/5 transform scale-95 opacity-0 transition-all duration-200';
 
     this.container.appendChild(this.backdrop);
     this.container.appendChild(this.modal);
@@ -65,6 +65,37 @@ export class SettingsModal {
     else this.open();
   }
 
+  private getCategoryIcon(id: string): string {
+    switch (id) {
+      case 'programming':
+        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>`;
+      case 'web':
+        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>`;
+      case 'database':
+        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>`;
+      case 'notes':
+        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>`;
+      default:
+        return `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" /></svg>`;
+    }
+  }
+
+  private getBadgeHtml(badge: string): string {
+    switch (badge) {
+      case 'Runnable':
+        return `<span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 text-[10px] font-semibold">Runnable</span>`;
+      case 'Live Preview':
+        return `<span class="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/25 text-[10px] font-semibold">Live Preview</span>`;
+      case 'Personal Dict':
+        return `<span class="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 text-[10px] font-semibold">Personal Dict</span>`;
+      case 'Validator':
+        return `<span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25 text-[10px] font-semibold">Validator</span>`;
+      case 'Syntax':
+      default:
+        return `<span class="px-2 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/10 text-[10px] font-semibold">Syntax</span>`;
+    }
+  }
+
   private render(): void {
     const s = this.store.get();
 
@@ -85,7 +116,7 @@ export class SettingsModal {
       <!-- Modal Body (Scrollable) -->
       <div class="flex-1 overflow-y-auto px-5 py-4 space-y-6 text-xs text-zinc-300">
         
-        <!-- 0. Reset Workspace Button (Prominently at Top of Settings) -->
+        <!-- 0. Reset Workspace Button -->
         <div class="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
           <div>
             <div class="font-semibold text-red-300">Reset Workspace</div>
@@ -127,7 +158,7 @@ export class SettingsModal {
               { id: 'midnight', name: 'Midnight Navy', preview: '#0a0f1d' },
               { id: 'dracula', name: 'Dracula Dark', preview: '#282a36' },
               { id: 'monokai', name: 'Monokai Pro', preview: '#272822' },
-              { id: 'light-clean', name: 'Clean Light', preview: '#ffffff' }
+              { id: 'light-clean', name: 'Soft Warm Light', preview: '#fbfbfa' }
             ].map(t => {
               const isSelected = s.codeTheme === t.id;
               return `
@@ -185,19 +216,44 @@ export class SettingsModal {
           </button>
         </div>
 
-        <!-- 6. Supported File Formats & Engines -->
+        <!-- 6. Supported File Formats Grouped into Expandable Header Cards -->
         <div>
-          <label class="block font-semibold text-zinc-200 mb-2">Supported File Formats</label>
-          <div class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-            ${SUPPORTED_FORMATS.map(item => `
-              <div class="flex items-center justify-between p-2 rounded-lg bg-[#141418]">
-                <div class="flex items-center gap-2">
-                  <span class="font-mono font-semibold" style="color: var(--accent-color);">${item.ext}</span>
-                  <span class="text-zinc-400">(${item.name})</span>
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <span class="text-[11px] text-zinc-500">${item.engine}</span>
-                  ${item.run ? `<span class="px-1.5 py-0.5 bg-emerald-950/60 text-emerald-400 text-[10px] rounded font-medium">Runnable</span>` : ''}
+          <div class="flex items-center justify-between mb-2">
+            <label class="font-semibold text-zinc-200">Supported File Formats</label>
+            <span class="text-[11px] text-zinc-500">${FORMAT_CATEGORIES.reduce((acc, c) => acc + c.formats.length, 0)} formats</span>
+          </div>
+
+          <div class="space-y-2">
+            ${FORMAT_CATEGORIES.map(cat => `
+              <div class="format-category-card border border-white/5 bg-[#141418] rounded-xl overflow-hidden transition-all">
+                <button data-toggle-category="${cat.id}" class="w-full flex items-center justify-between p-3 text-left hover:bg-white/5 active:bg-white/10 transition-colors">
+                  <div class="flex items-center gap-2.5">
+                    <span class="p-1.5 rounded-lg bg-white/5" style="color: var(--accent-color);">${this.getCategoryIcon(cat.id)}</span>
+                    <div>
+                      <div class="font-semibold text-xs text-zinc-100">${cat.title}</div>
+                      <div class="text-[10px] text-zinc-400">${cat.description}</div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-zinc-400 font-mono">${cat.formats.length} formats</span>
+                    <svg class="category-chevron w-4 h-4 text-zinc-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+                <div id="cat-body-${cat.id}" class="hidden px-3 pb-3 pt-1 space-y-1.5 border-t border-white/5">
+                  ${cat.formats.map(item => `
+                    <div class="flex items-center justify-between p-2 rounded-lg bg-black/30 border border-white/5 text-xs">
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono font-bold" style="color: var(--accent-color);">${item.ext}</span>
+                        <span class="text-zinc-200 font-medium">${item.name}</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-zinc-400 hidden sm:inline font-mono">${item.engine}</span>
+                        ${this.getBadgeHtml(item.badge)}
+                      </div>
+                    </div>
+                  `).join('')}
                 </div>
               </div>
             `).join('')}
@@ -293,8 +349,10 @@ export class SettingsModal {
       btn.addEventListener('click', () => {
         const theme = btn.getAttribute('data-code-theme') as any;
         if (theme) {
-          this.store.set({ codeTheme: theme });
-          document.documentElement.setAttribute('data-theme', theme === 'light-clean' ? 'light' : 'dark');
+          this.store.set({ 
+            codeTheme: theme,
+            themeMode: theme === 'light-clean' ? 'light' : 'dark'
+          });
         }
       });
     });
@@ -321,6 +379,25 @@ export class SettingsModal {
     this.modal.querySelector('#viewModeToggleBtn')?.addEventListener('click', () => {
       const current = this.store.get().viewMode;
       this.store.set({ viewMode: current === 'desktop' ? 'mobile' : 'desktop' });
+    });
+
+    // Expandable Format Categories
+    this.modal.querySelectorAll('[data-toggle-category]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const catId = btn.getAttribute('data-toggle-category');
+        const body = this.modal.querySelector(`#cat-body-${catId}`);
+        const chevron = btn.querySelector('.category-chevron');
+        if (body) {
+          const isHidden = body.classList.contains('hidden');
+          if (isHidden) {
+            body.classList.remove('hidden');
+            chevron?.classList.add('rotate-180');
+          } else {
+            body.classList.add('hidden');
+            chevron?.classList.remove('rotate-180');
+          }
+        }
+      });
     });
   }
 }

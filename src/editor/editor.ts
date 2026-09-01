@@ -10,6 +10,7 @@ import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
 import { cpp } from '@codemirror/lang-cpp';
 import { SupportedLanguage } from '../vfs/types';
+import { isNoteFormat } from '../vfs/vfs';
 import { AppSettings } from '../settings/settings-store';
 import { getCodeThemeExtensions } from './themes';
 import { getLanguageCompletions, globalDictionary } from './autocomplete';
@@ -185,10 +186,13 @@ export class CodeEditor {
               this.onChangeCallback(docStr);
             }
             // 1-second delay so user has time to finish typing / correct typos before adding to personal dictionary
-            clearTimeout(this.dictDebounceTimer);
-            this.dictDebounceTimer = setTimeout(() => {
-              globalDictionary.recordWords(docStr);
-            }, 1000);
+            // ONLY active for note/document formats (.md, .txt, .org, .rst, .adoc, .log, .todo)
+            if (isNoteFormat(this.currentLanguage)) {
+              clearTimeout(this.dictDebounceTimer);
+              this.dictDebounceTimer = setTimeout(() => {
+                globalDictionary.recordWords(docStr);
+              }, 1000);
+            }
           }
           if (update.selectionSet && this.onSelectionChangeCallback) {
             this.onSelectionChangeCallback(update.state.selection.ranges.length);
@@ -255,10 +259,17 @@ export class CodeEditor {
         case 'python': return python();
         case 'javascript': return javascript({ typescript: false });
         case 'typescript': return javascript({ typescript: true });
+        case 'react': return javascript({ jsx: true, typescript: true });
         case 'html': return html();
         case 'css': return css();
         case 'cpp': return cpp();
-        case 'markdown': return getMarkdownSyntaxExtension();
+        case 'markdown':
+        case 'org':
+        case 'rst':
+        case 'adoc':
+        case 'log':
+        case 'todo':
+          return getMarkdownSyntaxExtension();
         default: return [];
       }
     })();

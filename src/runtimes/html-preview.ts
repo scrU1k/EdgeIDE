@@ -11,8 +11,11 @@ export class HtmlPreviewBuilder {
       if (node && !node.isFolder) htmlFile = node;
     }
 
-    // 0. If active file is Markdown (.md), compile to clean responsive interactive HTML preview
-    if (!htmlFile && activeFile && (activeFile.language === 'markdown' || activeFile.name.toLowerCase().endsWith('.md'))) {
+    // 0. If active file is a Note format (.md, .txt, .org, .rst, .adoc, .log, .todo), compile to clean responsive interactive HTML preview
+    if (!htmlFile && activeFile && (
+      ['markdown', 'org', 'rst', 'adoc', 'log', 'todo', 'plaintext'].includes(activeFile.language) ||
+      /\.(md|markdown|txt|org|rst|adoc|asciidoc|log|todo|task)$/i.test(activeFile.name)
+    )) {
       return this.renderMarkdown(activeFile.name, activeFile.content);
     }
 
