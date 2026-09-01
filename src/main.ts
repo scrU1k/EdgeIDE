@@ -121,6 +121,18 @@ class MobileApp {
   }
 
   private async handleRun(): Promise<void> {
+    const status = this.runtimeManager.getStatus();
+    if (status.state === 'running' || status.state === 'loading_runtime') {
+      this.runtimeManager.terminate();
+      this.outputPanel.addMessage({
+        id: 'stop_msg_' + Date.now(),
+        type: 'system',
+        text: '⏹ Execution stopped by user.',
+        timestamp: Date.now()
+      });
+      return;
+    }
+
     const activeFile = this.vfs.getActiveFile();
     if (!activeFile) return;
 

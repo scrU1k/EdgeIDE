@@ -96,13 +96,26 @@ export class RuntimeManager {
       return result;
     } catch (e: any) {
       this.setStatus({ state: 'error', message: e.message });
-      throw e;
+      return {
+        success: false,
+        outputs: [],
+        executionTimeMs: 0,
+        error: e.message
+      };
     } finally {
       setTimeout(() => {
         if (this.status.state !== 'loading_runtime') {
           this.setStatus({ state: 'idle' });
         }
-      }, 500);
+      }, 300);
     }
+  }
+
+  public terminate(): void {
+    const pythonRuntime = this.getPythonRuntime();
+    if (pythonRuntime) {
+      pythonRuntime.terminate();
+    }
+    this.setStatus({ state: 'idle', message: 'Terminated' });
   }
 }

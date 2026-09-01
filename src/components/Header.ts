@@ -66,14 +66,13 @@ export class Header {
           <span class="hidden xs:inline">Terminal</span>
         </button>
 
-        <!-- Run Button (Uses dynamic --accent-color and glow) -->
-        <button id="headerRunBtn" ${isRunning ? 'disabled' : ''} style="background-color: var(--accent-color); box-shadow: 0 4px 14px var(--accent-color-glow);" class="flex items-center gap-1.5 px-4 py-1.5 rounded-xl ${isRunning ? 'opacity-70 cursor-wait' : 'hover:opacity-90'} text-white text-xs font-semibold active:scale-95 transition-all shadow-md">
+        <!-- Run / Stop Button (Toggles execution) -->
+        <button id="headerRunBtn" title="${isRunning ? 'Stop Execution' : 'Run Code (Ctrl+Enter)'}" style="${isRunning ? 'background-color: #ef4444; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);' : 'background-color: var(--accent-color); box-shadow: 0 4px 14px var(--accent-color-glow);'}" class="flex items-center gap-1.5 px-4 py-1.5 rounded-xl hover:opacity-90 text-white text-xs font-semibold active:scale-95 transition-all shadow-md">
           ${isRunning ? `
-            <svg class="animate-spin w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            <svg class="w-3.5 h-3.5 fill-current text-white animate-pulse" viewBox="0 0 24 24">
+              <rect x="5" y="5" width="14" height="14" rx="2" ry="2"/>
             </svg>
-            <span>Running...</span>
+            <span>Stop</span>
           ` : `
             <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z"/>

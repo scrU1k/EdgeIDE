@@ -1,57 +1,137 @@
 import { LanguageRuntime, ConsoleMessage, ExecutionResult } from './types';
 import { VirtualFileSystem } from '../vfs/vfs';
 
-// Declare global Pyodide interface for TypeScript
-declare global {
-  interface Window {
-    loadPyodide?: (config: { indexURL: string }) => Promise<any>;
-    pyodideInstance?: any;
-  }
+const PYODIDE_WORKER_SCRIPT = `
+let pyodide = null;
+let initPromise = null;
+let installedPackages = new Set(['micropip', 'packaging']);
+
+async function getPyodide() {
+  if (pyodide) return pyodide;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    postMessage({ type: 'msg', msgType: 'system', text: '⏳ Loading Pyodide CPython WebAssembly engine...' });
+    importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js");
+    
+    pyodide = await loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/"
+    });
+
+    pyodide.setStdout({
+      batched: (text) => {
+        postMessage({ type: 'msg', msgType: 'stdout', text });
+      }
+    });
+
+    pyodide.setStderr({
+      batched: (text) => {
+        postMessage({ type: 'msg', msgType: 'stderr', text });
+      }
+    });
+
+    postMessage({ type: 'msg', msgType: 'system', text: 'Python 3.12 (Pyodide WASM Worker) Ready' });
+    return pyodide;
+  })();
+
+  return initPromise;
 }
 
-const PYODIDE_CDN_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/';
+onmessage = async (e) => {
+  const { type, code, files, packages } = e.data;
+
+  if (type === 'run') {
+    const startTime = performance.now();
+    try {
+      const py = await getPyodide();
+
+      // Sync files into Pyodide virtual filesystem
+      if (files && Array.isArray(files)) {
+        for (const file of files) {
+          try {
+            py.FS.writeFile(file.name, file.content, { encoding: 'utf8' });
+          } catch(err) {}
+        }
+      }
+
+      // Execute Python asynchronously in background worker thread
+      const result = await py.runPythonAsync(code);
+      const executionTimeMs = performance.now() - startTime;
+
+      let resultStr = null;
+      if (result !== undefined && result !== null) {
+        const s = String(result);
+        if (s !== 'None') {
+          resultStr = s;
+        }
+      }
+
+      postMessage({
+        type: 'done',
+        success: true,
+        result: resultStr,
+        executionTimeMs
+      });
+    } catch(err) {
+      const executionTimeMs = performance.now() - startTime;
+      postMessage({
+        type: 'done',
+        success: false,
+        error: err?.message || String(err),
+        executionTimeMs
+      });
+    }
+  } else if (type === 'pip_install') {
+    try {
+      const py = await getPyodide();
+      await py.loadPackage('micropip');
+      const micropip = py.pyimport('micropip');
+      for (const pkg of (packages || [])) {
+        postMessage({ type: 'pip_log', text: 'Installing ' + pkg + '...' });
+        await micropip.install(pkg);
+        installedPackages.add(pkg);
+        postMessage({ type: 'pip_log', text: 'Successfully installed ' + pkg });
+      }
+      postMessage({ type: 'pip_done', success: true });
+    } catch(err) {
+      postMessage({ type: 'pip_done', success: false, error: err?.message || String(err) });
+    }
+  } else if (type === 'pip_list') {
+    postMessage({ type: 'pip_list_res', packages: Array.from(installedPackages) });
+  }
+};
+`;
 
 export class PythonRuntime implements LanguageRuntime {
   public id = 'pyodide';
   public name = 'Python 3.12 (Pyodide WASM)';
   public supportedLanguages = ['python' as const];
 
-  private pyodide: any = null;
-  private initPromise: Promise<any> | null = null;
+  private worker: Worker | null = null;
+  private currentReject: ((reason?: any) => void) | null = null;
 
   public isReady(): boolean {
-    return this.pyodide !== null;
+    return this.worker !== null;
   }
 
-  public async init(onProgress?: (msg: string) => void): Promise<void> {
-    if (this.pyodide) return;
-    if (this.initPromise) return this.initPromise;
+  private ensureWorker(): Worker {
+    if (!this.worker) {
+      const blob = new Blob([PYODIDE_WORKER_SCRIPT], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      this.worker = new Worker(blobUrl);
+    }
+    return this.worker;
+  }
 
-    this.initPromise = (async () => {
-      onProgress?.('Loading Pyodide WASM core runtime...');
-
-      // Dynamically load the Pyodide bootstrap script if not already present
-      if (!window.loadPyodide) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = `${PYODIDE_CDN_URL}pyodide.js`;
-          script.async = true;
-          script.onload = () => resolve();
-          script.onerror = (err) => reject(new Error('Failed to load Pyodide CDN script: ' + err));
-          document.head.appendChild(script);
-        });
-      }
-
-      onProgress?.('Initializing CPython WebAssembly engine on device...');
-      this.pyodide = await window.loadPyodide!({
-        indexURL: PYODIDE_CDN_URL
-      });
-
-      window.pyodideInstance = this.pyodide;
-      onProgress?.('Python 3.12 WASM Engine Ready');
-    })();
-
-    return this.initPromise;
+  public terminate(): void {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    if (this.currentReject) {
+      this.currentReject(new Error('Execution terminated by user'));
+      this.currentReject = null;
+    }
   }
 
   public async run(
@@ -71,139 +151,138 @@ export class PythonRuntime implements LanguageRuntime {
       onOutput(msg);
     };
 
-    const startTime = performance.now();
+    const worker = this.ensureWorker();
 
-    try {
-      if (!this.pyodide) {
-        pushMsg('system', '⏳ Initializing Pyodide Python WASM on device...');
-        await this.init((pMsg) => pushMsg('system', '  ' + pMsg));
-      }
+    return new Promise<ExecutionResult>((resolve, reject) => {
+      this.currentReject = reject;
 
-      // Sync all python files from VFS into Pyodide virtual filesystem
-      const allFiles = vfs.getAllFiles();
-      for (const file of allFiles) {
-        try {
-          this.pyodide.FS.writeFile(file.name, file.content, { encoding: 'utf8' });
-        } catch {
-          // Ignore if FS write fails for non-text
+      const handleMessage = (e: MessageEvent) => {
+        const data = e.data;
+        if (!data) return;
+
+        if (data.type === 'msg') {
+          pushMsg(data.msgType, data.text);
+        } else if (data.type === 'done') {
+          worker.removeEventListener('message', handleMessage);
+          this.currentReject = null;
+
+          if (data.success) {
+            if (data.result) {
+              pushMsg('result', '=> ' + data.result);
+            }
+            resolve({
+              success: true,
+              outputs,
+              executionTimeMs: data.executionTimeMs || 0
+            });
+          } else {
+            pushMsg('error', data.error);
+            resolve({
+              success: false,
+              outputs,
+              executionTimeMs: data.executionTimeMs || 0,
+              error: data.error
+            });
+          }
         }
-      }
-
-      // Setup stdout and stderr handlers
-      this.pyodide.setStdout({
-        batched: (text: string) => {
-          pushMsg('stdout', text);
-        }
-      });
-
-      this.pyodide.setStderr({
-        batched: (text: string) => {
-          pushMsg('stderr', text);
-        }
-      });
-
-      // Setup stdin handler for Python input()
-      this.pyodide.setStdin({
-        stdin: () => {
-          const val = window.prompt('Python input:');
-          if (val === null) return '';
-          pushMsg('stdout', val);
-          return val + '\n';
-        },
-        error: false,
-        isatty: true
-      });
-
-      // Execute python code
-      const result = await this.pyodide.runPythonAsync(code);
-      const executionTimeMs = performance.now() - startTime;
-
-      if (result !== undefined && result !== null) {
-        // If the last statement evaluated to a value
-        const resStr = String(result);
-        if (resStr !== 'None') {
-          pushMsg('result', '=> ' + resStr);
-        }
-      }
-
-      return {
-        success: true,
-        outputs,
-        executionTimeMs
       };
-    } catch (err: any) {
-      const executionTimeMs = performance.now() - startTime;
-      const errorMsg = err?.message || String(err);
-      pushMsg('error', errorMsg);
-      return {
-        success: false,
-        outputs,
-        executionTimeMs,
-        error: errorMsg
-      };
-    }
-  }
 
-  public async pipInstall(packages: string[], onLog: (text: string) => void): Promise<boolean> {
-    try {
-      if (!this.pyodide) {
-        onLog('\x1b[33mInitializing Python WASM environment...\x1b[0m');
-        await this.init((msg) => onLog(`\x1b[90m${msg}\x1b[0m`));
-      }
-      onLog(`\x1b[90mLoading micropip package manager...\x1b[0m`);
-      await this.pyodide.loadPackage('micropip');
-      const micropip = this.pyodide.pyimport('micropip');
-      onLog(`\x1b[36mCollecting ${packages.join(', ')}...\x1b[0m`);
-      await micropip.install(packages);
-      onLog(`\x1b[32mSuccessfully installed ${packages.join(', ')}\x1b[0m`);
-      return true;
-    } catch (e: any) {
-      onLog(`\x1b[31merror: ${e.message || String(e)}\x1b[0m`);
-      return false;
-    }
-  }
+      worker.addEventListener('message', handleMessage);
 
-  public async pipList(): Promise<string[]> {
-    if (!this.pyodide) await this.init();
-    await this.pyodide.loadPackage('micropip');
-    const micropip = this.pyodide.pyimport('micropip');
-    const list = micropip.list();
-    const jsObj = list.toJs ? list.toJs() : list;
-    return typeof jsObj === 'object' ? Object.keys(jsObj) : [];
+      const allFiles = vfs.getAllFiles().map(f => ({ name: f.name, content: f.content }));
+      worker.postMessage({
+        type: 'run',
+        code,
+        files: allFiles
+      });
+    });
   }
 
   public async runStreaming(
     code: string,
     vfs: VirtualFileSystem,
-    stdout: (text: string) => void,
-    stderr: (text: string) => void
-  ): Promise<any> {
-    if (!this.pyodide) {
-      stdout('Initializing Pyodide...\r\n');
-      await this.init();
-    }
+    onStdout: (out: string) => void,
+    onStderr: (err: string) => void
+  ): Promise<string | null> {
+    const worker = this.ensureWorker();
 
-    // Sync VFS files into Pyodide virtual filesystem
-    const allFiles = vfs.getAllFiles();
-    for (const file of allFiles) {
-      try {
-        this.pyodide.FS.writeFile(file.name, file.content, { encoding: 'utf8' });
-      } catch {}
-    }
+    return new Promise<string | null>((resolve, reject) => {
+      this.currentReject = reject;
 
-    this.pyodide.setStdout({ batched: (t: string) => stdout(t + '\r\n') });
-    this.pyodide.setStderr({ batched: (t: string) => stderr(t + '\r\n') });
-    this.pyodide.setStdin({
-      stdin: () => {
-        const val = window.prompt('Python input:');
-        if (val === null) return '';
-        stdout(val + '\r\n');
-        return val + '\n';
-      },
-      error: false,
-      isatty: true
+      const handleMessage = (e: MessageEvent) => {
+        const data = e.data;
+        if (!data) return;
+
+        if (data.type === 'msg') {
+          if (data.msgType === 'stdout' || data.msgType === 'result') {
+            onStdout(data.text + '\r\n');
+          } else if (data.msgType === 'stderr' || data.msgType === 'error') {
+            onStderr(data.text + '\r\n');
+          }
+        } else if (data.type === 'done') {
+          worker.removeEventListener('message', handleMessage);
+          this.currentReject = null;
+          if (data.success) {
+            resolve(data.result);
+          } else {
+            reject(new Error(data.error));
+          }
+        }
+      };
+
+      worker.addEventListener('message', handleMessage);
+
+      const allFiles = vfs.getAllFiles().map(f => ({ name: f.name, content: f.content }));
+      worker.postMessage({
+        type: 'run',
+        code,
+        files: allFiles
+      });
     });
+  }
 
-    return await this.pyodide.runPythonAsync(code);
+  public async pipInstall(packages: string[], onLog: (log: string) => void): Promise<void> {
+    const worker = this.ensureWorker();
+
+    return new Promise<void>((resolve, reject) => {
+      const handleMessage = (e: MessageEvent) => {
+        const data = e.data;
+        if (!data) return;
+
+        if (data.type === 'pip_log') {
+          onLog(data.text);
+        } else if (data.type === 'pip_done') {
+          worker.removeEventListener('message', handleMessage);
+          if (data.success) {
+            resolve();
+          } else {
+            reject(new Error(data.error));
+          }
+        }
+      };
+
+      worker.addEventListener('message', handleMessage);
+      worker.postMessage({
+        type: 'pip_install',
+        packages
+      });
+    });
+  }
+
+  public async pipList(): Promise<string[]> {
+    const worker = this.ensureWorker();
+
+    return new Promise<string[]>((resolve) => {
+      const handleMessage = (e: MessageEvent) => {
+        const data = e.data;
+        if (data && data.type === 'pip_list_res') {
+          worker.removeEventListener('message', handleMessage);
+          resolve(data.packages || ['micropip', 'packaging']);
+        }
+      };
+
+      worker.addEventListener('message', handleMessage);
+      worker.postMessage({ type: 'pip_list' });
+    });
   }
 }
