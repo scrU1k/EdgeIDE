@@ -96,6 +96,10 @@ export class ShareModal {
         this.render();
         break;
 
+      case 'file_requested':
+        this.openForPeer(ev.requesterId, ev.requesterName);
+        break;
+
       case 'transfer_progress':
         this.renderTransferProgress(ev.transfer);
         break;

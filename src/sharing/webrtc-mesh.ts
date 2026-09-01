@@ -1,6 +1,6 @@
 /**
- * Lightweight Zero-Cloud WebRTC DataChannel & Signaling Mesh
- * Enables physical cross-device P2P transfer between Laptop, Android, and iOS devices.
+ * Lightweight Zero-Cloud WebRTC DataChannel & Hybrid LAN/Public Signaling Mesh
+ * Enables seamless physical cross-device P2P transfer between Laptop, Android, and iOS devices.
  */
 
 export interface WebRTCMessage {
@@ -18,17 +18,11 @@ const PUBLIC_STUN_SERVERS: RTCConfiguration = {
   ]
 };
 
-// Fast, serverless public signaling relay for WebRTC SDP handshake across devices
-const SIGNALING_SERVERS = [
-  'wss://signaling.yjs.dev',
-  'wss://tracker.openwebtorrent.com',
-  'wss://tracker.webtorrent.dev'
-];
-
 export class WebRTCMesh {
   private myDeviceId: string;
   private onMessageCallback: (msg: WebRTCMessage) => void;
   private ws: WebSocket | null = null;
+  private eventSource: EventSource | null = null;
   private peers: Map<string, { pc: RTCPeerConnection; dc: RTCDataChannel | null; status: 'connecting' | 'connected' | 'failed' }> = new Map();
   private reconnectTimer: any = null;
   private isDestroyed: boolean = false;
@@ -39,79 +33,86 @@ export class WebRTCMesh {
     this.onMessageCallback = onMessage;
     this.broadcastChannel = new BroadcastChannel('edge_ide_p2p_mesh_v1');
 
-    // Local tab/window messages
+    // 1. Same-device instances (tabs / windows)
     this.broadcastChannel.onmessage = (e) => {
       if (e.data && e.data.senderId !== this.myDeviceId) {
         this.onMessageCallback(e.data);
       }
     };
 
-    this.connectSignaling(0);
+    // 2. Try Local LAN relay first (sub-millisecond instant on same Wi-Fi)
+    this.initLocalLanRelay();
+
+    // 3. Fallback to public WebRTC signaling
+    this.initPublicSignaling();
   }
 
-  private connectSignaling(serverIndex: number): void {
-    if (this.isDestroyed) return;
-    const url = SIGNALING_SERVERS[serverIndex % SIGNALING_SERVERS.length];
+  private initLocalLanRelay(): void {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
 
     try {
-      this.ws = new WebSocket(url);
+      // Check if running on a local web server with relay support
+      const relayUrl = '/api/p2p-relay/events';
+      this.eventSource = new EventSource(relayUrl);
 
-      this.ws.onopen = () => {
-        // Announce presence in the global EdgeIDE namespace
-        this.sendSignal({
-          type: 'join_mesh',
-          room: 'edge_ide_global_mesh_v1',
-          senderId: this.myDeviceId
-        });
+      this.eventSource.onmessage = (e) => {
+        try {
+          const msg: WebRTCMessage = JSON.parse(e.data);
+          if (msg && msg.senderId !== this.myDeviceId) {
+            if (!msg.targetId || msg.targetId === this.myDeviceId) {
+              this.onMessageCallback(msg);
+            }
+          }
+        } catch {}
       };
 
-      this.ws.onmessage = async (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg && msg.room === 'edge_ide_global_mesh_v1') {
-            if (msg.senderId === this.myDeviceId) return;
+      this.eventSource.onerror = () => {
+        // Fall back gracefully to public WebRTC broker
+      };
+    } catch {}
+  }
 
-            if (msg.type === 'sdp_offer' && msg.targetId === this.myDeviceId) {
-              await this.handleOffer(msg.senderId, msg.sdp);
-            } else if (msg.type === 'sdp_answer' && msg.targetId === this.myDeviceId) {
-              await this.handleAnswer(msg.senderId, msg.sdp);
-            } else if (msg.type === 'ice_candidate' && msg.targetId === this.myDeviceId) {
-              await this.handleCandidate(msg.senderId, msg.candidate);
-            } else if (msg.type === 'peer_relay_msg') {
-              // Direct signaling fallback for cross-device packets
-              if (msg.targetId === this.myDeviceId || !msg.targetId) {
-                this.onMessageCallback(msg.payload);
+  private initPublicSignaling(): void {
+    if (this.isDestroyed) return;
+
+    try {
+      this.ws = new WebSocket('wss://signaling.yjs.dev');
+
+      this.ws.onopen = () => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          // Yjs subscribe message format
+          this.ws.send(JSON.stringify({
+            type: 'subscribe',
+            topics: ['edgeide_p2p_mesh_global_v1']
+          }));
+        }
+      };
+
+      this.ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.type === 'publish' && data.topic === 'edgeide_p2p_mesh_global_v1') {
+            const msg: WebRTCMessage = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+            if (msg && msg.senderId !== this.myDeviceId) {
+              if (!msg.targetId || msg.targetId === this.myDeviceId) {
+                this.onMessageCallback(msg);
               }
             }
           }
         } catch {}
       };
 
-      this.ws.onerror = () => {
-        // Silent failover
-      };
+      this.ws.onerror = () => {};
 
       this.ws.onclose = () => {
         if (!this.isDestroyed) {
-          this.reconnectTimer = setTimeout(() => {
-            this.connectSignaling((serverIndex + 1) % SIGNALING_SERVERS.length);
-          }, 3000);
+          this.reconnectTimer = setTimeout(() => this.initPublicSignaling(), 4000);
         }
       };
     } catch {
       if (!this.isDestroyed) {
-        this.reconnectTimer = setTimeout(() => {
-          this.connectSignaling((serverIndex + 1) % SIGNALING_SERVERS.length);
-        }, 3000);
+        this.reconnectTimer = setTimeout(() => this.initPublicSignaling(), 4000);
       }
-    }
-  }
-
-  private sendSignal(data: any): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      try {
-        this.ws.send(JSON.stringify(data));
-      } catch {}
     }
   }
 
@@ -126,7 +127,16 @@ export class WebRTCMesh {
       this.broadcastChannel.postMessage(msg);
     } catch {}
 
-    // 2. WebRTC DataChannels for connected physical peers
+    // 2. Local LAN Server-Sent Events / POST Relay (Instant local Wi-Fi transmission)
+    try {
+      fetch('/api/p2p-relay/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msg)
+      }).catch(() => {});
+    } catch {}
+
+    // 3. WebRTC DataChannels for connected physical peers
     this.peers.forEach((peer, peerId) => {
       if (peer.dc && peer.dc.readyState === 'open') {
         if (!msg.targetId || msg.targetId === peerId) {
@@ -137,14 +147,16 @@ export class WebRTCMesh {
       }
     });
 
-    // 3. Fallback over signaling relay for discovered peers before WebRTC DC is negotiated
-    this.sendSignal({
-      type: 'peer_relay_msg',
-      room: 'edge_ide_global_mesh_v1',
-      senderId: this.myDeviceId,
-      targetId: msg.targetId,
-      payload: msg
-    });
+    // 4. Public WebRTC Signaling Relay
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({
+          type: 'publish',
+          topic: 'edgeide_p2p_mesh_global_v1',
+          data: msg
+        }));
+      } catch {}
+    }
   }
 
   public connectToPeer(peerId: string): void {
@@ -161,9 +173,8 @@ export class WebRTCMesh {
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          this.sendSignal({
+          this.broadcast({
             type: 'sdp_offer',
-            room: 'edge_ide_global_mesh_v1',
             senderId: this.myDeviceId,
             targetId: peerId,
             sdp: pc.localDescription
@@ -175,57 +186,11 @@ export class WebRTCMesh {
     } catch {}
   }
 
-  private async handleOffer(peerId: string, offerSdp: RTCSessionDescriptionInit): Promise<void> {
-    try {
-      const pc = new RTCPeerConnection(PUBLIC_STUN_SERVERS);
-      this.peers.set(peerId, { pc, dc: null, status: 'connecting' });
-
-      pc.ondatachannel = (e) => {
-        this.setupDataChannel(peerId, e.channel);
-        const p = this.peers.get(peerId);
-        if (p) p.dc = e.channel;
-      };
-
-      this.setupPeerConnection(peerId, pc);
-
-      await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      this.sendSignal({
-        type: 'sdp_answer',
-        room: 'edge_ide_global_mesh_v1',
-        senderId: this.myDeviceId,
-        targetId: peerId,
-        sdp: pc.localDescription
-      });
-    } catch {}
-  }
-
-  private async handleAnswer(peerId: string, answerSdp: RTCSessionDescriptionInit): Promise<void> {
-    const peer = this.peers.get(peerId);
-    if (!peer || !peer.pc) return;
-
-    try {
-      await peer.pc.setRemoteDescription(new RTCSessionDescription(answerSdp));
-    } catch {}
-  }
-
-  private async handleCandidate(peerId: string, candidate: RTCIceCandidateInit): Promise<void> {
-    const peer = this.peers.get(peerId);
-    if (!peer || !peer.pc) return;
-
-    try {
-      await peer.pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch {}
-  }
-
   private setupPeerConnection(peerId: string, pc: RTCPeerConnection): void {
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        this.sendSignal({
+        this.broadcast({
           type: 'ice_candidate',
-          room: 'edge_ide_global_mesh_v1',
           senderId: this.myDeviceId,
           targetId: peerId,
           candidate: e.candidate
@@ -272,6 +237,11 @@ export class WebRTCMesh {
     try {
       this.broadcastChannel.close();
     } catch {}
+    if (this.eventSource) {
+      try {
+        this.eventSource.close();
+      } catch {}
+    }
     if (this.ws) {
       try {
         this.ws.close();
