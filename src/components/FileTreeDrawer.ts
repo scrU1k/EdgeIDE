@@ -76,20 +76,30 @@ export class FileTreeDrawer {
       this.render();
     });
 
+    let lastViewMode = this.settingsStore.get().viewMode;
     this.settingsStore.subscribe((s) => {
-      if (s.viewMode === 'desktop') {
-        document.body.classList.add('desktop-drawer-open');
-        this.container.classList.remove('hidden');
-      } else {
-        document.body.classList.remove('desktop-drawer-open');
-        if (!this.isOpen) this.container.classList.add('hidden');
+      if (s.viewMode !== lastViewMode) {
+        lastViewMode = s.viewMode;
+        if (s.viewMode === 'desktop') {
+          document.body.classList.add('desktop-drawer-open');
+          this.isOpen = true;
+          this.container.classList.remove('hidden');
+          this.drawer.classList.remove('-translate-x-full');
+          this.drawer.classList.add('translate-x-0');
+        } else {
+          document.body.classList.remove('desktop-drawer-open');
+          this.close();
+        }
+        this.render();
       }
-      this.render();
     });
 
     if (this.settingsStore.get().viewMode === 'desktop') {
       document.body.classList.add('desktop-drawer-open');
+      this.isOpen = true;
       this.container.classList.remove('hidden');
+      this.drawer.classList.remove('-translate-x-full');
+      this.drawer.classList.add('translate-x-0');
     }
 
     this.setupSwipeGestures();

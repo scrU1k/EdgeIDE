@@ -765,15 +765,36 @@ body.desktop-mode .accessory-btn {
   color: #78716c !important;
 }
 
-[data-theme="light"] .settings-dropdown {
+[data-theme="light"] .settings-dropdown-trigger {
   background-color: #ffffff !important;
   color: #1c1917 !important;
   border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
-[data-theme="light"] .settings-dropdown option {
+[data-theme="light"] .settings-dropdown-trigger:hover {
+  background-color: #f4f3ef !important;
+}
+
+[data-theme="light"] .settings-dropdown-menu {
   background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .accent-option-btn,
+[data-theme="light"] .theme-option-btn {
   color: #1c1917 !important;
+}
+
+[data-theme="light"] .accent-option-btn:hover,
+[data-theme="light"] .theme-option-btn:hover {
+  background-color: #f4f3ef !important;
+}
+
+[data-theme="light"] .accent-option-btn.font-bold,
+[data-theme="light"] .theme-option-btn.font-bold {
+  background-color: #ebe9e3 !important;
 }
 
 [data-theme="light"] .font-family-btn {

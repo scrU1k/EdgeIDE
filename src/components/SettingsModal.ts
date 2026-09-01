@@ -3,6 +3,34 @@ import { Icons } from './icons';
 import { AppDialog } from './AppDialog';
 import { VirtualFileSystem } from '../vfs/vfs';
 
+export const CODE_SYNTAX_THEMES = [
+  { 
+    id: 'oled-dark', 
+    name: 'OLED Pitch Black', 
+    colors: ['#c084fc', '#60a5fa', '#4ade80', '#facc15'] 
+  },
+  { 
+    id: 'midnight', 
+    name: 'Midnight Navy', 
+    colors: ['#818cf8', '#38bdf8', '#34d399', '#fbbf24'] 
+  },
+  { 
+    id: 'dracula', 
+    name: 'Dracula Dark', 
+    colors: ['#ff79c6', '#50fa7b', '#f1fa8c', '#8be9fd'] 
+  },
+  { 
+    id: 'monokai', 
+    name: 'Monokai Pro', 
+    colors: ['#f92672', '#a6e22e', '#e6db74', '#66d9ef'] 
+  },
+  { 
+    id: 'light-clean', 
+    name: 'Soft Warm Light', 
+    colors: ['#7c3aed', '#2563eb', '#15803d', '#b45309'] 
+  }
+];
+
 export class SettingsModal {
   private container: HTMLElement;
   private modal: HTMLElement;
@@ -10,6 +38,9 @@ export class SettingsModal {
   private vfs?: VirtualFileSystem;
   private onResetCallback?: () => void;
   private expandedCategories: Set<string> = new Set(['programming', 'notes']);
+
+  private isAccentDropdownOpen: boolean = false;
+  private isCodeThemeDropdownOpen: boolean = false;
 
   constructor(parent: HTMLElement, store: SettingsStore, vfs?: VirtualFileSystem, onResetCallback?: () => void) {
     this.store = store;
@@ -25,7 +56,6 @@ export class SettingsModal {
     parent.appendChild(this.container);
 
     this.store.subscribe((s) => {
-      // Update interactive styles in-place without destroying DOM / interrupting user interactions
       this.updateActiveStyles(s);
     });
 
@@ -33,11 +63,15 @@ export class SettingsModal {
   }
 
   public open(): void {
+    this.isAccentDropdownOpen = false;
+    this.isCodeThemeDropdownOpen = false;
     this.container.classList.remove('hidden');
     this.updateActiveStyles(this.store.get());
   }
 
   public close(): void {
+    this.isAccentDropdownOpen = false;
+    this.isCodeThemeDropdownOpen = false;
     this.container.classList.add('hidden');
   }
 
@@ -48,7 +82,6 @@ export class SettingsModal {
       this.expandedCategories.add(catId);
     }
     
-    // Smoothly toggle container visibility and chevron rotation
     const bodyEl = this.modal.querySelector(`#cat-body-${catId}`);
     const chevronEl = this.modal.querySelector(`#cat-chevron-${catId}`);
     if (bodyEl && chevronEl) {
@@ -94,6 +127,8 @@ export class SettingsModal {
 
   private render(): void {
     const s = this.store.get();
+    const currentAccent = ACCENT_COLORS.find(c => c.value.toLowerCase() === s.accentColor.toLowerCase()) || ACCENT_COLORS[0];
+    const currentCodeTheme = CODE_SYNTAX_THEMES.find(t => t.id === s.codeTheme) || CODE_SYNTAX_THEMES[0];
 
     this.modal.innerHTML = `
       <!-- Modal Header -->
@@ -123,47 +158,73 @@ export class SettingsModal {
           </button>
         </div>
 
-        <!-- 1. Accent Color Dropdown Selection Menu -->
-        <div>
+        <!-- 1. Accent Color Dropdown with Color Indicators -->
+        <div class="relative">
           <label class="block font-semibold text-zinc-200 mb-1.5">Accent Color</label>
-          <div class="relative">
-            <select id="accentColorSelect" class="settings-dropdown w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer">
-              ${ACCENT_COLORS.map(c => `
-                <option value="${c.value}" ${s.accentColor.toLowerCase() === c.value.toLowerCase() ? 'selected' : ''}>
-                  ${c.name} (${c.value})
-                </option>
-              `).join('')}
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-zinc-400">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
+          <button id="accentDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span id="currentAccentDot" class="w-4 h-4 rounded-full shadow-inner shrink-0 border border-white/20" style="background-color: ${currentAccent.value};"></span>
+              <span id="currentAccentName" class="font-semibold text-zinc-100 truncate">${currentAccent.name}</span>
+              <span id="currentAccentHex" class="font-mono text-[11px] text-zinc-400 truncate">${currentAccent.value}</span>
             </div>
+            <svg id="accentDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+
+          <!-- Accent Dropdown Menu Options -->
+          <div id="accentDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 max-h-48 overflow-y-auto rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
+            ${ACCENT_COLORS.map(c => {
+              const isSelected = s.accentColor.toLowerCase() === c.value.toLowerCase();
+              return `
+                <button type="button" data-accent-val="${c.value}" class="accent-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
+                  isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                }">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="w-3.5 h-3.5 rounded-full shadow-inner shrink-0 border border-white/20" style="background-color: ${c.value};"></span>
+                    <span class="text-xs text-zinc-200 truncate">${c.name}</span>
+                  </div>
+                  <span class="font-mono text-[10px] text-zinc-400 shrink-0 ml-2">${c.value}</span>
+                </button>
+              `;
+            }).join('')}
           </div>
         </div>
 
-        <!-- 2. Code Syntax Theme Dropdown Selection Menu -->
-        <div>
+        <!-- 2. Code Syntax Theme Dropdown with Multi-Color Indicator -->
+        <div class="relative">
           <label class="block font-semibold text-zinc-200 mb-1.5">Code Syntax Theme</label>
-          <div class="relative">
-            <select id="codeThemeSelect" class="settings-dropdown w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer">
-              ${[
-                { id: 'oled-dark', name: 'OLED Pitch Black (Classic Vibrant)' },
-                { id: 'midnight', name: 'Midnight Navy (Deep Slate & Blue)' },
-                { id: 'dracula', name: 'Dracula Dark (Pink & Green)' },
-                { id: 'monokai', name: 'Monokai Pro (Warm Yellow & Rose)' },
-                { id: 'light-clean', name: 'Soft Warm Light (Clean High-Contrast)' }
-              ].map(t => `
-                <option value="${t.id}" ${s.codeTheme === t.id ? 'selected' : ''}>
-                  ${t.name}
-                </option>
-              `).join('')}
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-zinc-400">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
+          <button id="codeThemeDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <!-- Multi-color Indicator dots -->
+              <div id="currentThemeDots" class="flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10">
+                ${currentCodeTheme.colors.map(col => `<span class="w-2.5 h-2.5 rounded-full" style="background-color: ${col};"></span>`).join('')}
+              </div>
+              <span id="currentThemeName" class="font-semibold text-zinc-100 truncate">${currentCodeTheme.name}</span>
             </div>
+            <svg id="codeThemeDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+
+          <!-- Code Syntax Theme Dropdown Menu Options -->
+          <div id="codeThemeDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 max-h-56 overflow-y-auto rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
+            ${CODE_SYNTAX_THEMES.map(t => {
+              const isSelected = s.codeTheme === t.id;
+              return `
+                <button type="button" data-theme-id="${t.id}" class="theme-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
+                  isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                }">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10">
+                      ${t.colors.map(col => `<span class="w-2 h-2 rounded-full" style="background-color: ${col};"></span>`).join('')}
+                    </div>
+                    <span class="text-xs text-zinc-200 truncate">${t.name}</span>
+                  </div>
+                  ${isSelected ? `<span class="text-emerald-400 text-xs shrink-0 ml-2">✓</span>` : ''}
+                </button>
+              `;
+            }).join('')}
           </div>
         </div>
 
@@ -269,17 +330,23 @@ export class SettingsModal {
   }
 
   private updateActiveStyles(s: any): void {
-    // 1. Accent Color Select
-    const accentSelect = this.modal.querySelector('#accentColorSelect') as HTMLSelectElement;
-    if (accentSelect) {
-      accentSelect.value = s.accentColor;
-    }
+    // 1. Accent Color Trigger Update
+    const currentAccent = ACCENT_COLORS.find(c => c.value.toLowerCase() === s.accentColor.toLowerCase()) || ACCENT_COLORS[0];
+    const accentDot = this.modal.querySelector('#currentAccentDot') as HTMLElement;
+    const accentName = this.modal.querySelector('#currentAccentName') as HTMLElement;
+    const accentHex = this.modal.querySelector('#currentAccentHex') as HTMLElement;
+    if (accentDot) accentDot.style.backgroundColor = currentAccent.value;
+    if (accentName) accentName.textContent = currentAccent.name;
+    if (accentHex) accentHex.textContent = currentAccent.value;
 
-    // 2. Code Theme Select
-    const codeSelect = this.modal.querySelector('#codeThemeSelect') as HTMLSelectElement;
-    if (codeSelect) {
-      codeSelect.value = s.codeTheme;
+    // 2. Code Theme Trigger Update
+    const currentCodeTheme = CODE_SYNTAX_THEMES.find(t => t.id === s.codeTheme) || CODE_SYNTAX_THEMES[0];
+    const themeDots = this.modal.querySelector('#currentThemeDots') as HTMLElement;
+    const themeName = this.modal.querySelector('#currentThemeName') as HTMLElement;
+    if (themeDots) {
+      themeDots.innerHTML = currentCodeTheme.colors.map(col => `<span class="w-2.5 h-2.5 rounded-full" style="background-color: ${col};"></span>`).join('');
     }
+    if (themeName) themeName.textContent = currentCodeTheme.name;
 
     // 3. Font Family buttons
     this.modal.querySelectorAll('.font-family-btn').forEach(btn => {
@@ -328,20 +395,48 @@ export class SettingsModal {
       }
     });
 
-    // Accent Color Select Dropdown
-    const accentSelect = this.modal.querySelector('#accentColorSelect') as HTMLSelectElement;
-    accentSelect?.addEventListener('change', () => {
-      if (accentSelect.value) {
-        this.store.set({ accentColor: accentSelect.value });
-      }
+    // Accent Color Custom Dropdown Toggle
+    const accentTrigger = this.modal.querySelector('#accentDropdownTrigger');
+
+    accentTrigger?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.isAccentDropdownOpen = !this.isAccentDropdownOpen;
+      this.isCodeThemeDropdownOpen = false;
+      this.syncDropdownVisibility();
     });
 
-    // Code Theme Select Dropdown
-    const codeSelect = this.modal.querySelector('#codeThemeSelect') as HTMLSelectElement;
-    codeSelect?.addEventListener('change', () => {
-      if (codeSelect.value) {
-        this.store.set({ codeTheme: codeSelect.value as any });
-      }
+    this.modal.querySelectorAll('.accent-option-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const val = btn.getAttribute('data-accent-val');
+        if (val) {
+          this.store.set({ accentColor: val });
+        }
+        this.isAccentDropdownOpen = false;
+        this.syncDropdownVisibility();
+      });
+    });
+
+    // Code Syntax Theme Custom Dropdown Toggle
+    const themeTrigger = this.modal.querySelector('#codeThemeDropdownTrigger');
+
+    themeTrigger?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.isCodeThemeDropdownOpen = !this.isCodeThemeDropdownOpen;
+      this.isAccentDropdownOpen = false;
+      this.syncDropdownVisibility();
+    });
+
+    this.modal.querySelectorAll('.theme-option-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const themeId = btn.getAttribute('data-theme-id') as any;
+        if (themeId) {
+          this.store.set({ codeTheme: themeId });
+        }
+        this.isCodeThemeDropdownOpen = false;
+        this.syncDropdownVisibility();
+      });
     });
 
     // Custom Font Family Picker
@@ -379,11 +474,47 @@ export class SettingsModal {
       });
     });
 
+    // Close dropdowns on modal body click
+    this.modal.addEventListener('click', () => {
+      if (this.isAccentDropdownOpen || this.isCodeThemeDropdownOpen) {
+        this.isAccentDropdownOpen = false;
+        this.isCodeThemeDropdownOpen = false;
+        this.syncDropdownVisibility();
+      }
+    });
+
     // Close on clicking modal backdrop
     this.container.addEventListener('click', (e) => {
       if (e.target === this.container) {
         this.close();
       }
     });
+  }
+
+  private syncDropdownVisibility(): void {
+    const accentMenu = this.modal.querySelector('#accentDropdownMenu');
+    const accentChevron = this.modal.querySelector('#accentDropdownChevron');
+    const themeMenu = this.modal.querySelector('#codeThemeDropdownMenu');
+    const themeChevron = this.modal.querySelector('#codeThemeDropdownChevron');
+
+    if (accentMenu && accentChevron) {
+      if (this.isAccentDropdownOpen) {
+        accentMenu.classList.remove('hidden');
+        accentChevron.classList.add('rotate-180');
+      } else {
+        accentMenu.classList.add('hidden');
+        accentChevron.classList.remove('rotate-180');
+      }
+    }
+
+    if (themeMenu && themeChevron) {
+      if (this.isCodeThemeDropdownOpen) {
+        themeMenu.classList.remove('hidden');
+        themeChevron.classList.add('rotate-180');
+      } else {
+        themeMenu.classList.add('hidden');
+        themeChevron.classList.remove('rotate-180');
+      }
+    }
   }
 }

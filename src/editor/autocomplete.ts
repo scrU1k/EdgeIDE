@@ -58,14 +58,14 @@ class OnDeviceDictionary {
     }
   }
 
-  public getCompletions(prefix: string): Array<{ label: string; type: string; info?: string }> {
+  public getCompletions(prefix: string): Array<{ label: string; type: string }> {
     if (!prefix || prefix.length < 1) return [];
     const lower = prefix.toLowerCase();
-    const results: Array<{ label: string; type: string; info?: string }> = [];
+    const results: Array<{ label: string; type: string }> = [];
     
     for (const word of this.words) {
       if (word.toLowerCase().startsWith(lower) && word.toLowerCase() !== lower) {
-        results.push({ label: word, type: 'text', info: 'Personal Dictionary' });
+        results.push({ label: word, type: 'text' });
         if (results.length >= 25) break;
       }
     }
@@ -260,30 +260,33 @@ export function getLanguageCompletions(language: SupportedLanguage) {
 
     const prefix = word.text;
     const lowerPrefix = prefix.toLowerCase();
-    const options: Array<{ label: string; type: string; info?: string; boost?: number }> = [];
+    const options: Array<{ label: string; type: string; boost?: number }> = [];
 
-    // 1. Language Keywords (For all code languages)
-    const keywords = getKeywordsForLanguage(language);
+    // 1. Language Keywords
+    // In note formats: allow code auto-complete keywords (Python, JS, HTML, CSS, SQL) to creep into notes
+    // In code formats: strictly use that specific language's keywords
+    const keywords = isNoteFormat(language)
+      ? Array.from(new Set([...PYTHON_KEYWORDS, ...JS_TS_KEYWORDS, ...HTML_TAGS, ...CSS_PROPERTIES, ...SQL_KEYWORDS]))
+      : getKeywordsForLanguage(language);
+
     for (const kw of keywords) {
       if (kw.toLowerCase().startsWith(lowerPrefix) && kw.toLowerCase() !== lowerPrefix) {
         options.push({
           label: kw,
           type: 'keyword',
-          info: `Built-in keyword`,
           boost: 2
         });
       }
     }
 
-    // 2. Personal Learned Dictionary (ONLY for Note/Document Formats)
+    // 2. Personal Learned Dictionary (STRICTLY ONLY for Note Formats - NEVER in code files)
     if (isNoteFormat(language)) {
       const dictWords = globalDictionary.getCompletions(prefix);
       for (const d of dictWords) {
         if (!options.some(o => o.label === d.label)) {
           options.push({
             label: d.label,
-            type: d.type,
-            info: d.info,
+            type: 'text',
             boost: 1
           });
         }
@@ -304,8 +307,7 @@ export function getLanguageCompletions(language: SupportedLanguage) {
         seen.add(token);
         options.push({
           label: token,
-          type: 'variable',
-          info: 'In file'
+          type: 'variable'
         });
         if (options.length >= 35) break;
       }
