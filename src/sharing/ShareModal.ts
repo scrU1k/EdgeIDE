@@ -15,6 +15,7 @@ export class ShareModal {
   private isSelectingFiles: boolean = false;
   private qrDataUrl: string | null = null;
   private isShowingQrCode: boolean = false;
+  private targetPeer: { id: string; name: string } | null = null;
   private incomingPrompt: {
     transferId: string;
     senderId: string;
@@ -41,6 +42,12 @@ export class ShareModal {
     this.p2pEngine.subscribe((ev) => this.handleP2PEvent(ev));
 
     this.render();
+  }
+
+  public openForPeer(peerId: string, peerName: string): void {
+    this.p2pEngine.addDirectPeer(peerId, peerName);
+    this.targetPeer = { id: peerId, name: peerName };
+    this.open();
   }
 
   public open(fileId?: string): void {
@@ -71,6 +78,7 @@ export class ShareModal {
     this.container.classList.add('hidden');
     this.isShowingQrCode = false;
     this.isSelectingFiles = false;
+    this.targetPeer = null;
   }
 
   private handleP2PEvent(ev: TransferEvent): void {
@@ -261,6 +269,20 @@ export class ShareModal {
           </button>
         </div>
 
+        <!-- Target Peer Direct Action Card (if opened from QR scan) -->
+        ${this.targetPeer ? `
+          <div class="p-3.5 bg-indigo-500/15 border border-indigo-500/30 rounded-xl flex items-center justify-between animate-fade-in">
+            <div class="min-w-0 pr-2">
+              <div class="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider">Target Device</div>
+              <div class="font-bold text-sm text-zinc-100 truncate">${this.targetPeer.name}</div>
+              <div class="text-[10px] font-mono text-zinc-400 truncate">${this.targetPeer.id}</div>
+            </div>
+            <button id="sendDirectToTargetBtn" class="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white font-semibold text-xs shadow-md transition-all shrink-0">
+              Send Now
+            </button>
+          </div>
+        ` : ''}
+
         <!-- Discovered Local Devices (Radar) -->
         <div>
           <div class="flex items-center justify-between mb-2">
@@ -443,6 +465,13 @@ export class ShareModal {
   private attachSendEvents(): void {
     this.modal.querySelector('#shareModalCloseBtn')?.addEventListener('click', () => this.close());
 
+    this.modal.querySelector('#sendDirectToTargetBtn')?.addEventListener('click', () => {
+      if (this.targetPeer) {
+        const files = this.getFilesToShare();
+        this.p2pEngine.sendFiles(this.targetPeer.id, this.targetPeer.name, files);
+      }
+    });
+
     this.modal.querySelector('#openFileSelectBtn')?.addEventListener('click', () => {
       this.isSelectingFiles = true;
       this.render();
@@ -494,8 +523,8 @@ export class ShareModal {
         <div class="font-semibold text-zinc-200 text-sm">${s.deviceName}</div>
         <div class="text-xs text-zinc-400 font-mono">${s.deviceId}</div>
 
-        <div class="p-4 bg-white rounded-2xl w-60 h-60 mx-auto shadow-2xl flex items-center justify-center">
-          ${this.qrDataUrl ? `<img src="${this.qrDataUrl}" alt="Device QR Code" class="w-full h-full object-contain">` : '<div class="text-zinc-900">Generating...</div>'}
+        <div class="p-4 bg-white rounded-2xl w-72 h-72 mx-auto shadow-2xl flex items-center justify-center">
+          ${this.qrDataUrl ? `<img src="${this.qrDataUrl}" alt="Device QR Code" class="w-full h-full object-contain">` : '<div class="text-zinc-900 font-medium text-xs">Generating...</div>'}
         </div>
 
         <div class="text-[11px] text-zinc-400 max-w-[260px] mx-auto">

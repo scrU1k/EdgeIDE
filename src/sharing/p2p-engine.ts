@@ -70,6 +70,21 @@ export class P2PEngine {
     };
   }
 
+  /**
+   * Register a peer directly discovered via QR scan so it's immediately available.
+   */
+  public addDirectPeer(deviceId: string, deviceName: string, platform: string = 'Device', visibility: SharingVisibility = 'everyone'): void {
+    const peer: PeerDevice = {
+      deviceId,
+      deviceName,
+      platform,
+      visibility,
+      lastSeen: Date.now() + 120000 // Keep active for at least 2 minutes
+    };
+    this.discoveredPeers.set(deviceId, peer);
+    this.emit({ type: 'peer_discovered', peer });
+  }
+
   private emit(ev: TransferEvent): void {
     for (const listener of this.eventListeners) {
       listener(ev);

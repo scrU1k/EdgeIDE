@@ -8,9 +8,9 @@ export class QRService {
   public static async generateQRDataUrl(data: string, darkColor: string = '#000000', lightColor: string = '#ffffff'): Promise<string> {
     try {
       return await QRCode.toDataURL(data, {
-        errorCorrectionLevel: 'M',
+        errorCorrectionLevel: 'L',
         margin: 2,
-        width: 360,
+        width: 512,
         color: {
           dark: darkColor,
           light: lightColor

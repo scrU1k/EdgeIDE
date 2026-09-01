@@ -715,18 +715,18 @@ export class SettingsModal {
     const overlay = document.createElement('div');
     overlay.className = 'fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md select-none animate-fade-in';
     overlay.innerHTML = `
-      <div class="bg-[#0c0c0f] border border-white/10 rounded-3xl w-full max-w-xs flex flex-col shadow-2xl overflow-hidden p-6 text-center space-y-4">
+      <div class="bg-[#0c0c0f] border border-white/10 rounded-3xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden p-6 text-center space-y-4">
         <div class="flex items-center justify-between">
           <div class="text-left">
-            <div class="font-bold text-sm text-zinc-100">${s.deviceName}</div>
-            <div class="text-[10px] font-mono text-zinc-400">${s.deviceId}</div>
+            <div class="font-bold text-base text-zinc-100">${s.deviceName}</div>
+            <div class="text-xs font-mono text-zinc-400">${s.deviceId}</div>
           </div>
           <button id="enlargedQrCloseBtn" class="p-1.5 rounded-xl hover:bg-white/10 text-zinc-400 hover:text-white">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
 
-        <div class="p-4 bg-white rounded-2xl w-60 h-60 mx-auto shadow-2xl flex items-center justify-center">
+        <div class="p-4 bg-white rounded-2xl w-72 h-72 mx-auto shadow-2xl flex items-center justify-center">
           <img src="${this.qrDataUrl}" alt="Device QR Code" class="w-full h-full object-contain">
         </div>
 

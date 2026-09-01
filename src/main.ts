@@ -69,8 +69,8 @@ class MobileApp {
         }
       },
       this.p2pEngine,
-      (_device) => {
-        this.shareModal.open();
+      (device) => {
+        this.shareModal.openForPeer(device.deviceId, device.deviceName);
       }
     );
 
