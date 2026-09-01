@@ -1,7 +1,9 @@
-import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, FORMAT_CATEGORIES } from '../settings/settings-store';
+import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, FORMAT_CATEGORIES, SharingVisibility, TrustedDevice } from '../settings/settings-store';
 import { Icons } from './icons';
 import { AppDialog } from './AppDialog';
 import { VirtualFileSystem } from '../vfs/vfs';
+import { QRService } from '../sharing/qr-service';
+import { QRScannerModal } from '../sharing/QRScannerModal';
 
 export const CODE_SYNTAX_THEMES = [
   { 
@@ -37,10 +39,13 @@ export class SettingsModal {
   private store: SettingsStore;
   private vfs?: VirtualFileSystem;
   private onResetCallback?: () => void;
+  private activeTab: 'general' | 'share' = 'general';
   private expandedCategories: Set<string> = new Set(['programming', 'notes']);
 
   private isAccentDropdownOpen: boolean = false;
   private isCodeThemeDropdownOpen: boolean = false;
+  private qrDataUrl: string | null = null;
+  private qrScannerModal: QRScannerModal;
 
   constructor(parent: HTMLElement, store: SettingsStore, vfs?: VirtualFileSystem, onResetCallback?: () => void) {
     this.store = store;
@@ -55,6 +60,10 @@ export class SettingsModal {
     this.container.appendChild(this.modal);
     parent.appendChild(this.container);
 
+    this.qrScannerModal = new QRScannerModal(parent, this.store, () => {
+      this.render();
+    });
+
     this.store.subscribe((s) => {
       this.updateActiveStyles(s);
     });
@@ -62,11 +71,12 @@ export class SettingsModal {
     this.render();
   }
 
-  public open(): void {
+  public open(tab?: 'general' | 'share'): void {
+    if (tab) this.activeTab = tab;
     this.isAccentDropdownOpen = false;
     this.isCodeThemeDropdownOpen = false;
     this.container.classList.remove('hidden');
-    this.updateActiveStyles(this.store.get());
+    this.render();
   }
 
   public close(): void {
@@ -125,14 +135,29 @@ export class SettingsModal {
     }
   }
 
-  private render(): void {
+  private async generateDeviceQr(): Promise<void> {
+    const s = this.store.get();
+    const payload = JSON.stringify({
+      edgeide: true,
+      deviceId: s.deviceId,
+      deviceName: s.deviceName,
+      visibility: s.sharingVisibility
+    });
+    this.qrDataUrl = await QRService.generateQRDataUrl(payload, '#000000', '#ffffff');
+  }
+
+  private async render(): Promise<void> {
     const s = this.store.get();
     const currentAccent = ACCENT_COLORS.find(c => c.value.toLowerCase() === s.accentColor.toLowerCase()) || ACCENT_COLORS[0];
     const currentCodeTheme = CODE_SYNTAX_THEMES.find(t => t.id === s.codeTheme) || CODE_SYNTAX_THEMES[0];
 
+    if (!this.qrDataUrl) {
+      await this.generateDeviceQr();
+    }
+
     this.modal.innerHTML = `
       <!-- Modal Header -->
-      <div class="settings-modal-header flex items-center justify-between px-5 py-4 bg-[#0c0c0f] border-b border-white/5 shrink-0">
+      <div class="settings-modal-header flex items-center justify-between px-5 py-3.5 bg-[#0c0c0f] border-b border-white/5 shrink-0">
         <div class="flex items-center gap-2">
           <span style="color: var(--accent-color);">${Icons.settings}</span>
           <h2 class="font-bold text-sm text-zinc-100">Preferences</h2>
@@ -144,189 +169,283 @@ export class SettingsModal {
         </button>
       </div>
 
+      <!-- Navigation Tabs: | General | | Share & Sync | -->
+      <div class="flex items-center border-b border-white/5 bg-[#101014] px-3 shrink-0">
+        <button id="tabGeneralBtn" class="px-4 py-2.5 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+          this.activeTab === 'general'
+            ? 'border-indigo-500 text-indigo-300'
+            : 'border-transparent text-zinc-400 hover:text-zinc-200'
+        }">
+          <span>General</span>
+        </button>
+        <button id="tabShareBtn" class="px-4 py-2.5 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+          this.activeTab === 'share'
+            ? 'border-indigo-500 text-indigo-300'
+            : 'border-transparent text-zinc-400 hover:text-zinc-200'
+        }">
+          <span class="w-2 h-2 rounded-full ${s.sharingVisibility === 'offline' ? 'bg-zinc-500' : 'bg-emerald-400'}"></span>
+          <span>Share & Sync</span>
+        </button>
+      </div>
+
       <!-- Modal Body (Scrollable) -->
       <div class="settings-modal-body flex-1 overflow-y-auto px-5 py-4 space-y-5 text-xs text-zinc-300">
-        
-        <!-- 0. Reset Workspace Button -->
-        <div class="reset-workspace-card flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-          <div>
-            <div class="font-semibold text-red-300">Reset Workspace</div>
-            <div class="text-[11px] text-zinc-400">Restore starter template files & clear all edits</div>
-          </div>
-          <button id="settingsResetBtn" class="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 font-semibold text-xs hover:bg-red-500/30 active:scale-95 transition-all">
-            Reset
-          </button>
-        </div>
-
-        <!-- 1. Accent Color Dropdown with Color Indicators -->
-        <div class="relative">
-          <label class="block font-semibold text-zinc-200 mb-1.5">Accent Color</label>
-          <button id="accentDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
-            <div class="flex items-center gap-2.5 min-w-0">
-              <span id="currentAccentDot" class="w-4 h-4 rounded-full shadow-inner shrink-0 border border-white/20" style="background-color: ${currentAccent.value};"></span>
-              <span id="currentAccentName" class="font-semibold text-zinc-100 truncate">${currentAccent.name}</span>
-              <span id="currentAccentHex" class="font-mono text-[11px] text-zinc-400 truncate">${currentAccent.value}</span>
-            </div>
-            <svg id="accentDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </button>
-
-          <!-- Accent Dropdown Menu Options -->
-          <div id="accentDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 max-h-48 overflow-y-auto rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
-            ${ACCENT_COLORS.map(c => {
-              const isSelected = s.accentColor.toLowerCase() === c.value.toLowerCase();
-              return `
-                <button type="button" data-accent-val="${c.value}" class="accent-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
-                  isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
-                }">
-                  <div class="flex items-center gap-2.5 min-w-0">
-                    <span class="w-3.5 h-3.5 rounded-full shadow-inner shrink-0 border border-white/20" style="background-color: ${c.value};"></span>
-                    <span class="text-xs text-zinc-200 truncate">${c.name}</span>
-                  </div>
-                  <span class="font-mono text-[10px] text-zinc-400 shrink-0 ml-2">${c.value}</span>
-                </button>
-              `;
-            }).join('')}
-          </div>
-        </div>
-
-        <!-- 2. Code Syntax Theme Dropdown with Multi-Color Indicator -->
-        <div class="relative">
-          <label class="block font-semibold text-zinc-200 mb-1.5">Code Syntax Theme</label>
-          <button id="codeThemeDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
-            <div class="flex items-center gap-2.5 min-w-0">
-              <!-- Multi-color Indicator dots -->
-              <div id="currentThemeDots" class="flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10">
-                ${currentCodeTheme.colors.map(col => `<span class="w-2.5 h-2.5 rounded-full" style="background-color: ${col};"></span>`).join('')}
-              </div>
-              <span id="currentThemeName" class="font-semibold text-zinc-100 truncate">${currentCodeTheme.name}</span>
-            </div>
-            <svg id="codeThemeDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </button>
-
-          <!-- Code Syntax Theme Dropdown Menu Options -->
-          <div id="codeThemeDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 max-h-56 overflow-y-auto rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
-            ${CODE_SYNTAX_THEMES.map(t => {
-              const isSelected = s.codeTheme === t.id;
-              return `
-                <button type="button" data-theme-id="${t.id}" class="theme-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
-                  isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
-                }">
-                  <div class="flex items-center gap-2.5 min-w-0">
-                    <div class="flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10">
-                      ${t.colors.map(col => `<span class="w-2 h-2 rounded-full" style="background-color: ${col};"></span>`).join('')}
-                    </div>
-                    <span class="text-xs text-zinc-200 truncate">${t.name}</span>
-                  </div>
-                  ${isSelected ? `<span class="text-emerald-400 text-xs shrink-0 ml-2">✓</span>` : ''}
-                </button>
-              `;
-            }).join('')}
-          </div>
-        </div>
-
-        <!-- 3. Font Family (Custom In-App Matching UI) -->
-        <div>
-          <label class="block font-semibold text-zinc-200 mb-1.5">Editor Font Family</label>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            ${FONT_FAMILIES.map(f => {
-              const isSelected = s.fontFamily === f.value;
-              return `
-                <button data-font-family="${f.value}" class="font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all ${
-                  isSelected 
-                    ? 'border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold' 
-                    : 'border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200'
-                }">
-                  <span class="text-xs font-mono">${f.name}</span>
-                  <span class="text-[10px] text-zinc-500 font-mono">123 abc</span>
-                </button>
-              `;
-            }).join('')}
-          </div>
-        </div>
-
-        <!-- 4. Font Size Slider (Continuous & Smooth) -->
-        <div>
-          <div class="flex justify-between items-center mb-2">
-            <label class="font-semibold text-zinc-200">Editor Font Size</label>
-            <span class="font-mono font-semibold" style="color: var(--accent-color);" id="fontSizeVal">${s.fontSize}px</span>
-          </div>
-          <input id="fontSizeRange" type="range" min="10" max="26" step="0.5" value="${s.fontSize}" class="w-full h-2 rounded-lg cursor-pointer bg-[#141418] accent-indigo-500 touch-pan-x">
-        </div>
-
-        <!-- 5. View Mode Switch -->
-        <div class="layout-mode-card flex items-center justify-between p-3 bg-[#141418] rounded-xl border border-white/5">
-          <div>
-            <div class="font-semibold text-zinc-200">Layout Mode</div>
-            <div class="text-[11px] text-zinc-500">Toggle mobile touch drawer vs desktop pinned sidebar</div>
-          </div>
-          <button id="viewModeToggleBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-zinc-200 font-medium text-xs hover:bg-white/15 transition-all">
-            ${s.viewMode === 'desktop' ? Icons.desktop : Icons.mobile}
-            <span class="capitalize">${s.viewMode}</span>
-          </button>
-        </div>
-
-        <!-- 6. Supported File Formats Grouped into Expandable Header Cards -->
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <label class="font-semibold text-zinc-200">Supported File Formats</label>
-            <span class="text-[11px] text-zinc-500 font-mono">26 formats</span>
-          </div>
-          
-          <div class="space-y-2.5">
-            ${FORMAT_CATEGORIES.map(cat => {
-              const isExpanded = this.expandedCategories.has(cat.id);
-              return `
-                <div class="format-category-card rounded-2xl bg-[#141418] border border-white/5 overflow-hidden transition-all">
-                  <!-- Category Header Card (Clickable Toggle) -->
-                  <button data-cat-id="${cat.id}" class="cat-header-btn w-full p-3 flex items-center justify-between text-left hover:bg-white/5 active:bg-white/10 transition-colors">
-                    <div class="flex items-center gap-2.5 min-w-0">
-                      <div class="p-2 rounded-xl bg-white/5 shrink-0">
-                        ${this.getCategoryIcon(cat.id)}
-                      </div>
-                      <div class="min-w-0">
-                        <div class="font-semibold text-xs text-zinc-200 truncate">${cat.title}</div>
-                        <div class="text-[11px] text-zinc-500 truncate">${cat.description}</div>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0 ml-2">
-                      <span class="text-[11px] text-zinc-500 font-mono">${cat.formats.length} formats</span>
-                      <svg id="cat-chevron-${cat.id}" class="w-4 h-4 text-zinc-400 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                      </svg>
-                    </div>
-                  </button>
-
-                  <!-- Category Body (Read-only Dropdown List) -->
-                  <div id="cat-body-${cat.id}" class="${isExpanded ? '' : 'hidden'} border-t border-white/5 bg-black/30 p-2 space-y-1.5">
-                    ${cat.formats.map(f => `
-                      <div class="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                        <div class="min-w-0 pr-2">
-                          <div class="flex items-center gap-2">
-                            <span class="font-mono font-bold text-xs text-zinc-200">${f.name}</span>
-                            <span class="font-mono text-[11px] text-zinc-500">${f.ext}</span>
-                          </div>
-                          <div class="text-[10px] text-zinc-400 truncate">${f.engine}</div>
-                        </div>
-                        <div class="shrink-0">
-                          ${this.getBadgeHtml(f.badge)}
-                        </div>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-
+        ${this.activeTab === 'general' ? this.renderGeneralTabHtml(s, currentAccent, currentCodeTheme) : this.renderShareTabHtml(s)}
       </div>
     `;
 
     this.attachEvents();
+  }
+
+  private renderGeneralTabHtml(s: any, currentAccent: any, currentCodeTheme: any): string {
+    return `
+      <!-- 0. Reset Workspace Button (Only resets visual customizations & starter templates) -->
+      <div class="reset-workspace-card flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+        <div>
+          <div class="font-semibold text-red-300">Reset Workspace</div>
+          <div class="text-[11px] text-zinc-400">Restore starter template files & reset visual themes</div>
+        </div>
+        <button id="settingsResetBtn" class="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 font-semibold text-xs hover:bg-red-500/30 active:scale-95 transition-all">
+          Reset
+        </button>
+      </div>
+
+      <!-- 1. Accent Color Dropdown with Color Indicators -->
+      <div class="relative">
+        <label class="block font-semibold text-zinc-200 mb-1.5">Accent Color</label>
+        <button id="accentDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span id="currentAccentDot" class="w-4 h-4 rounded-full shadow-inner shrink-0 border border-white/20" style="background-color: ${currentAccent.value};"></span>
+            <span id="currentAccentName" class="font-semibold text-zinc-100 truncate">${currentAccent.name}</span>
+            <span id="currentAccentHex" class="font-mono text-[11px] text-zinc-400 truncate">${currentAccent.value}</span>
+          </div>
+          <svg id="accentDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+
+        <!-- Accent Dropdown Menu Options -->
+        <div id="accentDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 max-h-48 overflow-y-auto rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
+          ${ACCENT_COLORS.map(c => {
+            const isSelected = s.accentColor.toLowerCase() === c.value.toLowerCase();
+            return `
+              <button type="button" data-accent-val="${c.value}" class="accent-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
+                isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+              }">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span class="w-3.5 h-3.5 rounded-full shadow-inner shrink-0 border border-white/20" style="background-color: ${c.value};"></span>
+                  <span class="text-xs text-zinc-200 truncate">${c.name}</span>
+                </div>
+                <span class="font-mono text-[10px] text-zinc-400 shrink-0 ml-2">${c.value}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- 2. Code Syntax Theme Dropdown with Multi-Color Indicator -->
+      <div class="relative">
+        <label class="block font-semibold text-zinc-200 mb-1.5">Code Syntax Theme</label>
+        <button id="codeThemeDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div id="currentThemeDots" class="flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10">
+              ${currentCodeTheme.colors.map((col: string) => `<span class="w-2.5 h-2.5 rounded-full" style="background-color: ${col};"></span>`).join('')}
+            </div>
+            <span id="currentThemeName" class="font-semibold text-zinc-100 truncate">${currentCodeTheme.name}</span>
+          </div>
+          <svg id="codeThemeDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+
+        <!-- Code Syntax Theme Dropdown Menu Options -->
+        <div id="codeThemeDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 max-h-56 overflow-y-auto rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
+          ${CODE_SYNTAX_THEMES.map(t => {
+            const isSelected = s.codeTheme === t.id;
+            return `
+              <button type="button" data-theme-id="${t.id}" class="theme-option-btn w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
+                isSelected ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+              }">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <div class="flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10">
+                    ${t.colors.map(col => `<span class="w-2 h-2 rounded-full" style="background-color: ${col};"></span>`).join('')}
+                  </div>
+                  <span class="text-xs text-zinc-200 truncate">${t.name}</span>
+                </div>
+                ${isSelected ? `<span class="text-emerald-400 text-xs shrink-0 ml-2">✓</span>` : ''}
+              </button>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- 3. Font Family -->
+      <div>
+        <label class="block font-semibold text-zinc-200 mb-1.5">Editor Font Family</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          ${FONT_FAMILIES.map(f => {
+            const isSelected = s.fontFamily === f.value;
+            return `
+              <button data-font-family="${f.value}" class="font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all ${
+                isSelected 
+                  ? 'border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold' 
+                  : 'border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200'
+              }">
+                <span class="text-xs font-mono">${f.name}</span>
+                <span class="text-[10px] text-zinc-500 font-mono">123 abc</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- 4. Font Size Slider -->
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <label class="font-semibold text-zinc-200">Editor Font Size</label>
+          <span class="font-mono font-semibold" style="color: var(--accent-color);" id="fontSizeVal">${s.fontSize}px</span>
+        </div>
+        <input id="fontSizeRange" type="range" min="10" max="26" step="0.5" value="${s.fontSize}" class="w-full h-2 rounded-lg cursor-pointer bg-[#141418] accent-indigo-500 touch-pan-x">
+      </div>
+
+      <!-- 5. View Mode Switch -->
+      <div class="layout-mode-card flex items-center justify-between p-3 bg-[#141418] rounded-xl border border-white/5">
+        <div>
+          <div class="font-semibold text-zinc-200">Layout Mode</div>
+          <div class="text-[11px] text-zinc-500">Toggle mobile touch drawer vs desktop pinned sidebar</div>
+        </div>
+        <button id="viewModeToggleBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-zinc-200 font-medium text-xs hover:bg-white/15 transition-all">
+          ${s.viewMode === 'desktop' ? Icons.desktop : Icons.mobile}
+          <span class="capitalize">${s.viewMode}</span>
+        </button>
+      </div>
+
+      <!-- 6. Supported File Formats -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="font-semibold text-zinc-200">Supported File Formats</label>
+          <span class="text-[11px] text-zinc-500 font-mono">26 formats</span>
+        </div>
+        
+        <div class="space-y-2.5">
+          ${FORMAT_CATEGORIES.map(cat => {
+            const isExpanded = this.expandedCategories.has(cat.id);
+            return `
+              <div class="format-category-card rounded-2xl bg-[#141418] border border-white/5 overflow-hidden transition-all">
+                <button data-cat-id="${cat.id}" class="cat-header-btn w-full p-3 flex items-center justify-between text-left hover:bg-white/5 active:bg-white/10 transition-colors">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="p-2 rounded-xl bg-white/5 shrink-0">
+                      ${this.getCategoryIcon(cat.id)}
+                    </div>
+                    <div class="min-w-0">
+                      <div class="font-semibold text-xs text-zinc-200 truncate">${cat.title}</div>
+                      <div class="text-[11px] text-zinc-500 truncate">${cat.description}</div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0 ml-2">
+                    <span class="text-[11px] text-zinc-500 font-mono">${cat.formats.length} formats</span>
+                    <svg id="cat-chevron-${cat.id}" class="w-4 h-4 text-zinc-400 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                  </div>
+                </button>
+
+                <div id="cat-body-${cat.id}" class="${isExpanded ? '' : 'hidden'} border-t border-white/5 bg-black/30 p-2 space-y-1.5">
+                  ${cat.formats.map(f => `
+                    <div class="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
+                      <div class="min-w-0 pr-2">
+                        <div class="flex items-center gap-2">
+                          <span class="font-mono font-bold text-xs text-zinc-200">${f.name}</span>
+                          <span class="font-mono text-[11px] text-zinc-500">${f.ext}</span>
+                        </div>
+                        <div class="text-[10px] text-zinc-400 truncate">${f.engine}</div>
+                      </div>
+                      <div class="shrink-0">
+                        ${this.getBadgeHtml(f.badge)}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  private renderShareTabHtml(s: any): string {
+    return `
+      <!-- My Device Profile & Personal QR Code -->
+      <div class="p-4 bg-[#141418] border border-white/10 rounded-2xl space-y-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1 space-y-1.5">
+            <label class="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Device Profile</label>
+            <input id="deviceNameInput" type="text" value="${s.deviceName}" class="w-full px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 text-zinc-100 font-semibold text-xs focus:outline-none focus:border-indigo-500 transition-colors" placeholder="Device Name">
+            <div class="text-[10px] font-mono text-zinc-500">${s.deviceId}</div>
+          </div>
+          
+          <!-- Scan QR Code Button (Icon Only) -->
+          <button id="scanQrIconBtn" title="Scan QR Code" class="p-2.5 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25 active:scale-95 transition-all shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Embedded Personal QR Code -->
+        <div class="pt-2 flex items-center gap-3">
+          <div class="w-16 h-16 rounded-xl bg-white p-1 shadow-md shrink-0 flex items-center justify-center">
+            ${this.qrDataUrl ? `<img src="${this.qrDataUrl}" alt="Device QR" class="w-full h-full object-contain">` : ''}
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-semibold text-xs text-zinc-200">Personal Offline QR Code</div>
+            <div class="text-[11px] text-zinc-400">Other EdgeIDE users can scan this to pair directly.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sharing Visibility Dropdown Selector -->
+      <div>
+        <label class="block font-semibold text-zinc-200 mb-1.5">Sharing Visibility</label>
+        <select id="sharingVisibilitySelect" class="settings-dropdown w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="everyone" ${s.sharingVisibility === 'everyone' ? 'selected' : ''}>Everyone (4-Digit PIN Required)</option>
+          <option value="trusted" ${s.sharingVisibility === 'trusted' ? 'selected' : ''}>Trusted Devices Only (1-Tap Prompt)</option>
+          <option value="offline" ${s.sharingVisibility === 'offline' ? 'selected' : ''}>Offline (QR Scan Only)</option>
+        </select>
+      </div>
+
+      <!-- Trusted Devices Whitelist -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="font-semibold text-zinc-200">Trusted Devices</label>
+          <span class="text-[11px] text-zinc-500 font-mono">${s.trustedDevices.length} paired</span>
+        </div>
+
+        ${s.trustedDevices.length === 0 ? `
+          <div class="p-4 text-center bg-[#141418]/60 border border-white/5 rounded-xl text-zinc-400 space-y-1">
+            <div class="font-medium text-xs text-zinc-300">No Trusted Devices Yet</div>
+            <div class="text-[11px] text-zinc-500">Devices added via QR scan or approved after transfer will appear here.</div>
+          </div>
+        ` : `
+          <div class="space-y-2 max-h-48 overflow-y-auto">
+            ${s.trustedDevices.map((d: TrustedDevice) => `
+              <div class="p-2.5 bg-[#141418] border border-white/5 rounded-xl flex items-center justify-between">
+                <div class="min-w-0 pr-2">
+                  <div class="font-semibold text-xs text-zinc-200 truncate">${d.name}</div>
+                  <div class="text-[10px] text-zinc-500 font-mono">${d.id} • ${new Date(d.addedAt).toLocaleDateString()}</div>
+                </div>
+                <button data-remove-trusted-id="${d.id}" class="remove-trusted-btn p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+    `;
   }
 
   private updateActiveStyles(s: any): void {
@@ -376,11 +495,22 @@ export class SettingsModal {
   private attachEvents(): void {
     this.modal.querySelector('#settingsCloseBtn')?.addEventListener('click', () => this.close());
 
-    // Reset button
+    // Tab buttons
+    this.modal.querySelector('#tabGeneralBtn')?.addEventListener('click', () => {
+      this.activeTab = 'general';
+      this.render();
+    });
+
+    this.modal.querySelector('#tabShareBtn')?.addEventListener('click', () => {
+      this.activeTab = 'share';
+      this.render();
+    });
+
+    // Reset button in General tab (only resets visual settings and starter template files)
     this.modal.querySelector('#settingsResetBtn')?.addEventListener('click', async () => {
       const confirmed = await AppDialog.confirm({
         title: 'Reset Workspace',
-        message: 'Reset workspace files to initial starter templates? All unsaved edits will be cleared.',
+        message: 'Reset starter template files and visual themes? Your device identity, trusted devices, and sharing settings will be preserved.',
         confirmText: 'Reset',
         isDestructive: true
       });
@@ -388,6 +518,7 @@ export class SettingsModal {
         if (this.vfs) {
           this.vfs.resetToDefaults();
         }
+        this.store.resetVisualSettings();
         if (this.onResetCallback) {
           this.onResetCallback();
         }
@@ -397,7 +528,6 @@ export class SettingsModal {
 
     // Accent Color Custom Dropdown Toggle
     const accentTrigger = this.modal.querySelector('#accentDropdownTrigger');
-
     accentTrigger?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.isAccentDropdownOpen = !this.isAccentDropdownOpen;
@@ -419,7 +549,6 @@ export class SettingsModal {
 
     // Code Syntax Theme Custom Dropdown Toggle
     const themeTrigger = this.modal.querySelector('#codeThemeDropdownTrigger');
-
     themeTrigger?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.isCodeThemeDropdownOpen = !this.isCodeThemeDropdownOpen;
@@ -447,7 +576,7 @@ export class SettingsModal {
       });
     });
 
-    // Font Size Range (Continuous, smooth sliding)
+    // Font Size Range
     const fontSizeRange = this.modal.querySelector('#fontSizeRange') as HTMLInputElement;
     const fontSizeVal = this.modal.querySelector('#fontSizeVal') as HTMLElement;
     fontSizeRange?.addEventListener('input', (e) => {
@@ -470,6 +599,38 @@ export class SettingsModal {
         const catId = btn.getAttribute('data-cat-id');
         if (catId) {
           this.toggleCategory(catId);
+        }
+      });
+    });
+
+    // Share & Sync tab events
+    const deviceNameInput = this.modal.querySelector('#deviceNameInput') as HTMLInputElement;
+    deviceNameInput?.addEventListener('change', () => {
+      const name = deviceNameInput.value.trim();
+      if (name) {
+        this.store.set({ deviceName: name });
+        this.generateDeviceQr();
+      }
+    });
+
+    const scanQrBtn = this.modal.querySelector('#scanQrIconBtn');
+    scanQrBtn?.addEventListener('click', () => {
+      this.qrScannerModal.open();
+    });
+
+    const visibilitySelect = this.modal.querySelector('#sharingVisibilitySelect') as HTMLSelectElement;
+    visibilitySelect?.addEventListener('change', () => {
+      const val = visibilitySelect.value as SharingVisibility;
+      this.store.set({ sharingVisibility: val });
+      this.generateDeviceQr();
+    });
+
+    this.modal.querySelectorAll('.remove-trusted-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-remove-trusted-id');
+        if (id) {
+          this.store.removeTrustedDevice(id);
+          this.render();
         }
       });
     });

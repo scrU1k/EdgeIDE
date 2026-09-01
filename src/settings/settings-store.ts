@@ -1,3 +1,13 @@
+export type SharingVisibility = 'everyone' | 'trusted' | 'offline';
+
+export interface TrustedDevice {
+  id: string;
+  name: string;
+  platform: string;
+  addedAt: number;
+  lastSeen: number;
+}
+
 export interface AppSettings {
   accentColor: string;
   fontFamily: string;
@@ -7,6 +17,12 @@ export interface AppSettings {
   codeTheme: 'oled-dark' | 'midnight' | 'dracula' | 'monokai' | 'light-clean';
   wordWrap: boolean;
   showLineNumbers: boolean;
+  // Sharing & Sync Configuration
+  sharingVisibility: SharingVisibility;
+  deviceName: string;
+  deviceId: string;
+  trustedDevices: TrustedDevice[];
+  dismissedTrustedDeviceIds: string[];
 }
 
 export const ACCENT_COLORS = [
@@ -111,7 +127,29 @@ export const SUPPORTED_FORMATS = FORMAT_CATEGORIES.flatMap(cat =>
   }))
 );
 
-const SETTINGS_KEY = 'edge_ide_settings_v5';
+const SETTINGS_KEY = 'edge_ide_settings_v6';
+
+function generateRandomDeviceId(): string {
+  const chars = '0123456789abcdef';
+  let id = 'dev_';
+  for (let i = 0; i < 10; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
+
+function getDefaultDeviceName(): string {
+  const isAndroid = /android/i.test(navigator.userAgent);
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isMac = /macintosh/i.test(navigator.userAgent);
+  const isWindows = /windows/i.test(navigator.userAgent);
+  
+  if (isAndroid) return 'Android IDE Device';
+  if (isIOS) return 'iOS IDE Device';
+  if (isMac) return 'Mac IDE Workstation';
+  if (isWindows) return 'Windows IDE PC';
+  return 'EdgeIDE Device';
+}
 
 export class SettingsStore {
   private settings: AppSettings;
@@ -126,7 +164,8 @@ export class SettingsStore {
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (raw) {
-        return { ...this.defaultSettings(), ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw);
+        return { ...this.defaultSettings(), ...parsed };
       }
     } catch {}
     return this.defaultSettings();
@@ -141,7 +180,12 @@ export class SettingsStore {
       viewMode: 'mobile',
       codeTheme: 'oled-dark',
       wordWrap: false,
-      showLineNumbers: true
+      showLineNumbers: true,
+      sharingVisibility: 'everyone',
+      deviceName: getDefaultDeviceName(),
+      deviceId: generateRandomDeviceId(),
+      trustedDevices: [],
+      dismissedTrustedDeviceIds: []
     };
   }
 
@@ -174,6 +218,53 @@ export class SettingsStore {
 
   public toggleViewMode(): void {
     this.set({ viewMode: this.settings.viewMode === 'mobile' ? 'desktop' : 'mobile' });
+  }
+
+  // Trusted Devices Management
+  public addTrustedDevice(device: Omit<TrustedDevice, 'addedAt'>): void {
+    const existing = this.settings.trustedDevices.filter(d => d.id !== device.id);
+    const newEntry: TrustedDevice = {
+      ...device,
+      addedAt: Date.now()
+    };
+    this.set({
+      trustedDevices: [...existing, newEntry]
+    });
+  }
+
+  public removeTrustedDevice(deviceId: string): void {
+    this.set({
+      trustedDevices: this.settings.trustedDevices.filter(d => d.id !== deviceId)
+    });
+  }
+
+  public isTrusted(deviceId: string): boolean {
+    return this.settings.trustedDevices.some(d => d.id === deviceId);
+  }
+
+  public dismissTrustPrompt(deviceId: string): void {
+    if (!this.settings.dismissedTrustedDeviceIds.includes(deviceId)) {
+      this.set({
+        dismissedTrustedDeviceIds: [...this.settings.dismissedTrustedDeviceIds, deviceId]
+      });
+    }
+  }
+
+  public isTrustDismissed(deviceId: string): boolean {
+    return this.settings.dismissedTrustedDeviceIds.includes(deviceId);
+  }
+
+  public resetVisualSettings(): void {
+    // Only resets visual and editor customizations; preserves device ID, trusted devices, sharing visibility, and device name
+    this.set({
+      accentColor: '#6366f1',
+      fontFamily: "'Fira Code', monospace",
+      fontSize: 14.5,
+      themeMode: 'dark',
+      codeTheme: 'oled-dark',
+      wordWrap: false,
+      showLineNumbers: true
+    });
   }
 
   private hexToRgba(hex: string, alpha: number): string {

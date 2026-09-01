@@ -12,12 +12,15 @@ import { SettingsModal } from './components/SettingsModal';
 import { NativeStorageBridge } from './vfs/native-storage';
 import { PlatformBridge } from './native/platform';
 import { EditorActionMenu } from './components/EditorActionMenu';
+import { P2PEngine } from './sharing/p2p-engine';
+import { ShareModal } from './sharing/ShareModal';
 
 class MobileApp {
   private vfs: VirtualFileSystem;
   private settingsStore: SettingsStore;
   private runtimeManager: RuntimeManager;
   private editor: CodeEditor;
+  private p2pEngine: P2PEngine;
   
   public header!: Header;
   public tabBar!: TabBar;
@@ -25,6 +28,7 @@ class MobileApp {
   public drawer!: FileTreeDrawer;
   public outputPanel!: OutputPanel;
   public settingsModal!: SettingsModal;
+  public shareModal!: ShareModal;
   public editorActionMenu!: EditorActionMenu;
 
   private appRoot: HTMLElement;
@@ -36,6 +40,7 @@ class MobileApp {
     this.vfs = new VirtualFileSystem();
     this.runtimeManager = new RuntimeManager();
     this.editor = new CodeEditor();
+    this.p2pEngine = new P2PEngine(this.settingsStore, this.vfs);
 
     this.setupUI();
     this.bindEvents();
@@ -57,16 +62,25 @@ class MobileApp {
       }
     );
 
-    // 2. File Tree Drawer
+    // 2. Share Modal
+    this.shareModal = new ShareModal(
+      document.body,
+      this.p2pEngine,
+      this.settingsStore,
+      this.vfs
+    );
+
+    // 3. File Tree Drawer
     this.drawer = new FileTreeDrawer(
       document.body,
       this.vfs,
       this.settingsStore,
       (fileId) => this.switchFile(fileId),
-      () => this.settingsModal.open()
+      () => this.settingsModal.open('general'),
+      (fileId) => this.shareModal.open(fileId)
     );
 
-    // 3. Header
+    // 4. Header
     this.header = new Header(
       this.appRoot,
       this.vfs,
@@ -76,14 +90,14 @@ class MobileApp {
       () => this.outputPanel.toggle()
     );
 
-    // 4. Tab Bar
+    // 5. Tab Bar
     this.tabBar = new TabBar(
       this.appRoot,
       this.vfs,
       (fileId) => this.switchFile(fileId)
     );
 
-    // 5. Editor Container
+    // 6. Editor Container
     this.editorContainer = document.createElement('main');
     this.editorContainer.className = 'editor-main-container flex-1 overflow-hidden relative';
     this.appRoot.appendChild(this.editorContainer);
@@ -102,13 +116,18 @@ class MobileApp {
       }
     );
 
-    // 6. Editor Action Menu (FAB + Dropdown + Find & Replace bar)
-    this.editorActionMenu = new EditorActionMenu(this.editorContainer, this.editor, this.settingsStore);
+    // 7. Editor Action Menu (Standalone Share FAB + FAB + Dropdown + Find & Replace bar)
+    this.editorActionMenu = new EditorActionMenu(
+      this.editorContainer, 
+      this.editor, 
+      this.settingsStore, 
+      () => this.shareModal.open()
+    );
 
-    // 7. Mobile Keyboard Accessory Bar
+    // 8. Mobile Keyboard Accessory Bar
     this.accessoryBar = new AccessoryBar(this.appRoot, this.editor);
 
-    // 8. Output Panel (Console + Terminal + Web Preview with drag resize)
+    // 9. Output Panel (Console + Terminal + Web Preview with drag resize)
     this.outputPanel = new OutputPanel(document.body, this.vfs, this.runtimeManager.getPythonRuntime());
   }
 

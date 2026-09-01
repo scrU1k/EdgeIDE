@@ -14,6 +14,7 @@ export class FileTreeDrawer {
   private isOpen: boolean = false;
   private onSelectFileCallback: (fileId: string) => void;
   private onOpenSettings: () => void;
+  public onShareFile?: (fileId: string) => void;
 
   // Drawer Width Resizing
   private drawerWidthPx: number = 300;
@@ -35,12 +36,14 @@ export class FileTreeDrawer {
     vfs: VirtualFileSystem, 
     settingsStore: SettingsStore,
     onSelectFile: (fileId: string) => void,
-    onOpenSettings: () => void
+    onOpenSettings: () => void,
+    onShareFile?: (fileId: string) => void
   ) {
     this.vfs = vfs;
     this.settingsStore = settingsStore;
     this.onSelectFileCallback = onSelectFile;
     this.onOpenSettings = onOpenSettings;
+    this.onShareFile = onShareFile;
 
     // Restore saved width
     try {
@@ -634,6 +637,11 @@ export class FileTreeDrawer {
             <span>Add File Inside</span>
           </button>
         ` : `
+          <button data-ctx="direct-p2p-share" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200">
+            <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+            <span>Direct P2P Share...</span>
+          </button>
+
           <button data-ctx="share-menu" class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200">
             <div class="flex items-center gap-2.5">
               <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
@@ -714,6 +722,11 @@ export class FileTreeDrawer {
             this.onSelectFileCallback(file.id);
             if (!document.body.classList.contains('desktop-mode')) this.close();
           }
+        } else if (action === 'direct-p2p-share') {
+          if (this.onShareFile) {
+            this.onShareFile(node.id);
+          }
+          if (!document.body.classList.contains('desktop-mode')) this.close();
         } else if (action === 'share-menu') {
           this.openShareSubPopup(node, popupX, popupY);
         } else if (action === 'export-menu') {
