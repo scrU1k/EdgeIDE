@@ -305,9 +305,16 @@ colorBtn.addEventListener('click', () => {
 export class VirtualFileSystem {
   private state: ProjectState;
   private listeners: Array<() => void> = [];
+  private saveDebounceTimer: any = null;
 
   constructor() {
     this.state = this.loadFromStorage();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        this.save(true);
+      });
+    }
   }
 
   private loadFromStorage(): ProjectState {
@@ -328,12 +335,35 @@ export class VirtualFileSystem {
     };
   }
 
-  public save(): void {
+  public save(immediate: boolean = true): void {
+    if (!immediate) {
+      if (this.saveDebounceTimer !== null) {
+        clearTimeout(this.saveDebounceTimer);
+      }
+      this.saveDebounceTimer = setTimeout(() => {
+        this.saveDebounceTimer = null;
+        this.flushSave();
+      }, 300);
+      return;
+    }
+
+    if (this.saveDebounceTimer !== null) {
+      clearTimeout(this.saveDebounceTimer);
+      this.saveDebounceTimer = null;
+    }
+    this.flushSave();
+  }
+
+  private flushSave(): void {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
       this.notify();
-    } catch (e) {
-      console.error('Failed to save VFS state', e);
+    } catch (e: any) {
+      if (e?.name === 'QuotaExceededError' || e?.code === 22) {
+        console.warn('[VFS] Storage quota warning: Project size is reaching browser limits.');
+      } else {
+        console.error('Failed to save VFS state', e);
+      }
     }
   }
 
@@ -477,13 +507,12 @@ export class VirtualFileSystem {
 
   public updateContent(id: string, content: string): void {
     const node = this.state.files[id];
-    if (node && !node.isFolder) {
-      node.content = content;
-      node.updatedAt = Date.now();
-      this.save();
-      if (!node.isDraft) {
-        NativeStorageBridge.saveFile(node.path, content);
-      }
+    if (!node || node.isFolder) return;
+    node.content = content;
+    node.updatedAt = Date.now();
+    this.save(false);
+    if (!node.isDraft) {
+      NativeStorageBridge.saveFile(node.path, content);
     }
   }
 

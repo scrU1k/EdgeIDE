@@ -128,8 +128,12 @@ export class HtmlPreviewBuilder {
           continue;
         } else {
           inCodeBlock = false;
-          const codeContent = this.escapeHtml(codeBlockBuffer.join('\n'));
-          processedLines.push(`<div class="code-block"><div class="code-header">${codeBlockLang || 'code'}</div><pre><code>${codeContent}</code></pre></div>`);
+          if (codeBlockLang.toLowerCase() === 'mermaid') {
+            processedLines.push(`<div class="mermaid-block my-4 p-3 bg-black/40 rounded-xl border border-white/5 overflow-x-auto flex justify-center"><pre class="mermaid">${this.escapeHtml(codeBlockBuffer.join('\n'))}</pre></div>`);
+          } else {
+            const codeContent = this.escapeHtml(codeBlockBuffer.join('\n'));
+            processedLines.push(`<div class="code-block"><div class="code-header">${codeBlockLang || 'code'}</div><pre><code>${codeContent}</code></pre></div>`);
+          }
           continue;
         }
       }
@@ -206,6 +210,16 @@ export class HtmlPreviewBuilder {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${this.escapeHtml(title)}</title>
+
+  <!-- KaTeX Math Rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" crossorigin="anonymous"
+    onload="if(window.renderMathInElement){ renderMathInElement(document.body, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false }); }"></script>
+
+  <!-- Mermaid Diagrams Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.4.0/dist/mermaid.min.js"></script>
+
   <style>
     :root { color-scheme: dark; }
     body {
@@ -361,6 +375,12 @@ export class HtmlPreviewBuilder {
         } catch(err) {}
       }
     });
+
+    if (window.mermaid) {
+      try {
+        mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+      } catch(e) {}
+    }
   </script>
 </body>
 </html>`;

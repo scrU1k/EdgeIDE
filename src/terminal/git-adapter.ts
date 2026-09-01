@@ -28,18 +28,31 @@ class GitVirtualFS {
   private savePersistedGit(): void {
     try {
       const gitData: Record<string, string> = {};
+      let totalBytes = 0;
       this.binaryFiles.forEach((val, key) => {
         let binary = '';
         const bytes = new Uint8Array(val);
         const len = bytes.byteLength;
+        totalBytes += len;
         for (let i = 0; i < len; i++) {
           binary += String.fromCharCode(bytes[i]);
         }
         gitData[key] = btoa(binary);
       });
+
+      // Guard against quota exhaustion if git repository size exceeds safe threshold (2MB)
+      if (totalBytes > 2 * 1024 * 1024) {
+        console.warn('[Git] Git repository exceeds 2MB storage threshold. Retaining objects in runtime memory.');
+        return;
+      }
+
       localStorage.setItem('edge_ide_git_objects', JSON.stringify(gitData));
       localStorage.setItem('edge_ide_git_dirs', JSON.stringify(Array.from(this.dirs)));
-    } catch {}
+    } catch (e: any) {
+      if (e?.name === 'QuotaExceededError' || e?.code === 22) {
+        console.warn('[Git] Storage quota limit reached during git persistence.');
+      }
+    }
   }
 
   private loadPersistedGit(): void {

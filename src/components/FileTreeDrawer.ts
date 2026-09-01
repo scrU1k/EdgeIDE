@@ -17,6 +17,7 @@ export class FileTreeDrawer {
   public onShareFile?: (fileId: string) => void;
   public onOpenQrScanner?: () => void;
 
+  private onOpenSearch?: () => void;
   // Drawer Width Resizing
   private drawerWidthPx: number = 300;
   private isResizingWidth: boolean = false;
@@ -39,7 +40,8 @@ export class FileTreeDrawer {
     onSelectFile: (fileId: string) => void,
     onOpenSettings: () => void,
     onShareFile?: (fileId: string) => void,
-    onOpenQrScanner?: () => void
+    onOpenQrScanner?: () => void,
+    onOpenSearch?: () => void
   ) {
     this.vfs = vfs;
     this.settingsStore = settingsStore;
@@ -47,6 +49,7 @@ export class FileTreeDrawer {
     this.onOpenSettings = onOpenSettings;
     this.onShareFile = onShareFile;
     this.onOpenQrScanner = onOpenQrScanner;
+    this.onOpenSearch = onOpenSearch;
 
     // Restore saved width
     try {
@@ -201,7 +204,11 @@ export class FileTreeDrawer {
       <!-- Drawer Header (Brought down with safe area padding) -->
       <div class="flex items-center justify-between px-4 pb-3 bg-[#09090b] border-b border-white/5 select-none" style="padding-top: max(env(safe-area-inset-top, 0px), 18px);">
         <div class="flex items-center gap-2 min-w-0">
-          <div class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: var(--accent-color);"></div>
+          <button id="explorerSearchBtn" title="Search Workspace (Ctrl+P / Ctrl+Shift+F)" class="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 transition-all flex items-center justify-center shrink-0 shadow-sm" style="color: var(--accent-color);">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
           <h2 class="font-bold text-sm text-zinc-100 tracking-tight truncate">Explorer</h2>
         </div>
         <button id="drawerCloseBtn" title="Close Explorer" class="p-1.5 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 transition-all shrink-0">
@@ -269,6 +276,8 @@ export class FileTreeDrawer {
     this.setupDrawerResizeHandle();
   }
 
+  private isResizeInitialized: boolean = false;
+
   private setupDrawerResizeHandle(): void {
     const handle = this.drawer.querySelector('#drawerResizeHandle') as HTMLElement;
     if (!handle) return;
@@ -298,33 +307,38 @@ export class FileTreeDrawer {
       }
     };
 
-    // Touch
+    // Touch handle binding
     handle.addEventListener('touchstart', (e) => {
       e.stopPropagation();
       startResize();
     }, { passive: false });
 
-    window.addEventListener('touchmove', (e) => {
-      if (this.isResizingWidth) {
-        doResize(e.touches[0].clientX);
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchend', stopResize, { passive: true });
-
-    // Mouse
+    // Mouse handle binding
     handle.addEventListener('mousedown', (e) => {
       e.stopPropagation();
       startResize();
     });
 
-    window.addEventListener('mousemove', (e) => {
-      if (this.isResizingWidth) {
-        doResize(e.clientX);
-      }
-    });
+    // Window listeners (bound only once to prevent memory leak)
+    if (!this.isResizeInitialized) {
+      this.isResizeInitialized = true;
 
-    window.addEventListener('mouseup', stopResize);
+      window.addEventListener('touchmove', (e) => {
+        if (this.isResizingWidth) {
+          doResize(e.touches[0].clientX);
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchend', stopResize, { passive: true });
+
+      window.addEventListener('mousemove', (e) => {
+        if (this.isResizingWidth) {
+          doResize(e.clientX);
+        }
+      });
+
+      window.addEventListener('mouseup', stopResize);
+    }
   }
 
   private renderTreeLevel(parentId: string | null, depth: number): string {
@@ -397,6 +411,14 @@ export class FileTreeDrawer {
 
   private attachEvents(): void {
     this.drawer.querySelector('#drawerCloseBtn')?.addEventListener('click', () => this.close());
+
+    // Explorer Search
+    this.drawer.querySelector('#explorerSearchBtn')?.addEventListener('click', () => {
+      if (!document.body.classList.contains('desktop-mode')) {
+        this.close();
+      }
+      this.onOpenSearch?.();
+    });
 
     // Theme Toggle
     this.drawer.querySelector('#themeToggleBtn')?.addEventListener('click', () => {

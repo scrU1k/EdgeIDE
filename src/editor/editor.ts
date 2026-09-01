@@ -30,6 +30,7 @@ export class CodeEditor {
   private onChangeCallback: ((content: string) => void) | null = null;
   private onSelectionChangeCallback: ((cursorCount: number) => void) | null = null;
   private dictDebounceTimer: any = null;
+  private container!: HTMLElement;
 
   public init(
     container: HTMLElement, 
@@ -38,6 +39,7 @@ export class CodeEditor {
     settings: AppSettings,
     onChange: (content: string) => void
   ): void {
+    this.container = container;
     this.onChangeCallback = onChange;
     this.currentLanguage = language;
     this.isWordWrap = settings.wordWrap ?? false;
@@ -647,6 +649,23 @@ export class CodeEditor {
     } catch {}
 
     return { current, total };
+  }
+
+  public getSelectedText(): string {
+    if (!this.view) return '';
+    const { state } = this.view;
+    const { selection } = state;
+    if (selection.main.empty) return '';
+    return state.sliceDoc(selection.main.from, selection.main.to);
+  }
+
+  public getDomElement(): HTMLElement {
+    return this.view ? this.view.dom : this.container;
+  }
+
+  public hasSelection(): boolean {
+    if (!this.view) return false;
+    return !this.view.state.selection.main.empty;
   }
 
   public focus(): void {

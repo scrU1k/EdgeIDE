@@ -4,6 +4,8 @@ import { AppDialog } from './AppDialog';
 import { VirtualFileSystem } from '../vfs/vfs';
 import { QRService } from '../sharing/qr-service';
 import { QRScannerModal } from '../sharing/QRScannerModal';
+import { SyntaxGuidesModal } from './SyntaxGuidesModal';
+import { ZipService, ZipTaskController, ZipProgress } from '../vfs/zip-service';
 
 export const CODE_SYNTAX_THEMES = [
   { 
@@ -39,7 +41,7 @@ export class SettingsModal {
   private store: SettingsStore;
   private vfs?: VirtualFileSystem;
   private onResetCallback?: () => void;
-  private activeTab: 'general' | 'share' = 'general';
+  private activeTab: 'general' | 'data' | 'share' = 'general';
   private expandedCategories: Set<string> = new Set(['programming', 'notes']);
 
   private isAccentDropdownOpen: boolean = false;
@@ -47,6 +49,9 @@ export class SettingsModal {
   private isFontDropdownOpen: boolean = false;
   private qrDataUrl: string | null = null;
   public qrScannerModal: QRScannerModal;
+  public syntaxGuidesModal: SyntaxGuidesModal;
+  private activeZipController: ZipTaskController | null = null;
+  private currentZipProgress: ZipProgress | null = null;
 
   constructor(
     parent: HTMLElement, 
@@ -58,6 +63,7 @@ export class SettingsModal {
   ) {
     this.store = store;
     this.vfs = vfs;
+    this.syntaxGuidesModal = new SyntaxGuidesModal(parent);
     this.onResetCallback = onResetCallback;
 
     this.container = document.createElement('div');
@@ -94,7 +100,7 @@ export class SettingsModal {
     this.render();
   }
 
-  public open(tab?: 'general' | 'share'): void {
+  public open(tab?: 'general' | 'data' | 'share'): void {
     if (tab) this.activeTab = tab;
     this.isAccentDropdownOpen = false;
     this.isCodeThemeDropdownOpen = false;
@@ -160,7 +166,6 @@ export class SettingsModal {
 
   private async generateDeviceQr(): Promise<void> {
     const s = this.store.get();
-    // Embed this device's relay endpoint so scanned devices can send messages directly to this server
     const relayBase = window.location.origin;
     const payload = JSON.stringify({
       edgeide: true,
@@ -196,16 +201,23 @@ export class SettingsModal {
         </button>
       </div>
 
-      <!-- Navigation Tabs: | General | | Share & Sync | -->
+      <!-- Navigation Tabs: | General | | Data | | Share & Sync | -->
       <div class="flex items-center border-b border-white/5 bg-[#101014] px-3 shrink-0">
-        <button id="tabGeneralBtn" class="px-4 py-2.5 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+        <button id="tabGeneralBtn" class="px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
           this.activeTab === 'general'
             ? 'border-indigo-500 text-indigo-300'
             : 'border-transparent text-zinc-400 hover:text-zinc-200'
         }">
           <span>General</span>
         </button>
-        <button id="tabShareBtn" class="px-4 py-2.5 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+        <button id="tabDataBtn" class="px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+          this.activeTab === 'data'
+            ? 'border-indigo-500 text-indigo-300'
+            : 'border-transparent text-zinc-400 hover:text-zinc-200'
+        }">
+          <span>Data</span>
+        </button>
+        <button id="tabShareBtn" class="px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
           this.activeTab === 'share'
             ? 'border-indigo-500 text-indigo-300'
             : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -217,7 +229,11 @@ export class SettingsModal {
 
       <!-- Modal Body (Scrollable) -->
       <div class="settings-modal-body flex-1 overflow-y-auto px-5 py-4 space-y-5 text-xs text-zinc-300">
-        ${this.activeTab === 'general' ? this.renderGeneralTabHtml(s, currentAccent, currentCodeTheme, currentFont) : this.renderShareTabHtml(s)}
+        ${this.activeTab === 'general' 
+            ? this.renderGeneralTabHtml(s, currentAccent, currentCodeTheme, currentFont) 
+            : this.activeTab === 'data'
+            ? this.renderDataTabHtml()
+            : this.renderShareTabHtml(s)}
       </div>
     `;
 
@@ -490,6 +506,103 @@ export class SettingsModal {
     `;
   }
 
+  private renderDataTabHtml(): string {
+    const isProgressActive = this.currentZipProgress !== null && this.currentZipProgress.status !== 'completed' && this.currentZipProgress.status !== 'cancelled' && this.currentZipProgress.status !== 'error';
+
+    return `
+      <!-- 1. Workspace Backup & ZIP Archives -->
+      <div class="space-y-3">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+          </svg>
+          <span class="font-bold text-xs text-zinc-100 uppercase tracking-wider">Project Backup (.zip)</span>
+        </div>
+        <p class="text-[11px] text-zinc-400">Export or restore your entire workspace (files, notes, folders) as a single compressed .zip file. Saves directly to <code class="text-zinc-300 bg-black/40 px-1 rounded">Documents/EdgeIDE/</code> on device.</p>
+
+        <!-- Export and Import buttons -->
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button id="dataExportZipBtn" ${isProgressActive ? 'disabled' : ''} class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 font-semibold text-xs active:scale-95 transition-all disabled:opacity-50">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>Export ZIP</span>
+          </button>
+
+          <label id="dataImportZipLabel" class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-200 font-semibold text-xs active:scale-95 transition-all cursor-pointer">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
+            </svg>
+            <span>Import ZIP</span>
+            <input type="file" id="dataZipFileInput" accept=".zip" class="hidden" />
+          </label>
+        </div>
+
+        <!-- Live Progress Bar with Pause & Cancel -->
+        <div id="zipProgressContainer" class="${isProgressActive ? '' : 'hidden'} bg-[#141418] p-3.5 rounded-xl border border-white/10 space-y-2 mt-2">
+          <div class="flex items-center justify-between text-xs">
+            <span id="zipStatusText" class="font-medium text-zinc-200 font-mono truncate max-w-[200px]">
+              ${this.currentZipProgress?.currentFile ? `${this.currentZipProgress.status === 'compressing' ? 'Compressing' : 'Extracting'}: ${this.currentZipProgress.currentFile}` : 'Processing archive...'}
+            </span>
+            <span id="zipPercentText" class="font-mono text-indigo-400 font-bold">${this.currentZipProgress?.percent || 0}%</span>
+          </div>
+          <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
+            <div id="zipProgressBar" style="width: ${this.currentZipProgress?.percent || 0}%; background-color: var(--accent-color);" class="h-full transition-all duration-150"></div>
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button id="zipPauseBtn" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-medium text-zinc-300 active:scale-95 transition-all">
+              ${this.activeZipController?.getPaused() ? 'Resume' : 'Pause'}
+            </button>
+            <button id="zipCancelBtn" class="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-[11px] font-medium text-red-300 active:scale-95 transition-all">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Syntax Guides Section -->
+      <div class="space-y-3 pt-3 border-t border-white/5">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+          <span class="font-bold text-xs text-zinc-100 uppercase tracking-wider">Syntax Guides & Reference</span>
+        </div>
+        
+        <!-- Syntax Guides - [.md] Card -->
+        <button id="openSyntaxGuidesBtn" class="w-full flex items-center justify-between p-3.5 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-transparent border border-purple-500/30 hover:border-purple-500/50 rounded-xl text-left transition-all active:scale-98 group shadow-sm">
+          <div class="flex items-center gap-3">
+            <div class="p-2 rounded-lg bg-purple-500/20 text-purple-300">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div>
+              <div class="font-bold text-xs text-zinc-100 group-hover:text-purple-300 transition-colors">Syntax Guides - [.md]</div>
+              <div class="text-[11px] text-zinc-400">Interactive cheat-sheet for Markdown, KaTeX math equations ($) and Mermaid diagrams</div>
+            </div>
+          </div>
+          <svg class="w-4 h-4 text-purple-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 3. Reset Workspace -->
+      <div class="space-y-3 pt-3 border-t border-white/5">
+        <div class="reset-workspace-card flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+          <div>
+            <div class="font-semibold text-red-300">Reset Workspace</div>
+            <div class="text-[11px] text-zinc-400">Restore starter template files & reset local state</div>
+          </div>
+          <button id="settingsResetBtn" class="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 font-semibold text-xs hover:bg-red-500/30 active:scale-95 transition-all">
+            Reset
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   private updateActiveStyles(s: any): void {
     // 1. Accent Color Trigger Update
     const currentAccent = ACCENT_COLORS.find(c => c.value.toLowerCase() === s.accentColor.toLowerCase()) || ACCENT_COLORS[0];
@@ -547,9 +660,118 @@ export class SettingsModal {
       this.render();
     });
 
+    this.modal.querySelector('#tabDataBtn')?.addEventListener('click', () => {
+      this.activeTab = 'data';
+      this.render();
+    });
+
     this.modal.querySelector('#tabShareBtn')?.addEventListener('click', () => {
       this.activeTab = 'share';
       this.render();
+    });
+
+    // Open Syntax Guides Popover
+    this.modal.querySelector('#openSyntaxGuidesBtn')?.addEventListener('click', () => {
+      this.syntaxGuidesModal.open('markdown');
+    });
+
+    // ZIP Export
+    this.modal.querySelector('#dataExportZipBtn')?.addEventListener('click', async () => {
+      if (!this.vfs) return;
+      this.activeZipController = new ZipTaskController();
+      this.currentZipProgress = {
+        percent: 0,
+        currentFile: 'Starting...',
+        processedFiles: 0,
+        totalFiles: 0,
+        isPaused: false,
+        isCancelled: false,
+        status: 'compressing'
+      };
+      this.showZipProgressUI();
+
+      try {
+        const result = await ZipService.exportProjectZip(
+          this.vfs,
+          this.activeZipController,
+          (progress) => {
+            this.currentZipProgress = progress;
+            this.updateZipProgressUI();
+          }
+        );
+        setTimeout(() => {
+          this.hideZipProgressUI();
+          AppDialog.prompt({
+            title: 'ZIP Export Complete',
+            defaultValue: result.path || result.filename,
+            confirmText: 'Done',
+            cancelText: 'Close'
+          });
+        }, 600);
+      } catch (err: any) {
+        if (!this.activeZipController.getCancelled()) {
+          alert('Export failed: ' + (err.message || err));
+        }
+        this.hideZipProgressUI();
+      }
+    });
+
+    // ZIP Import
+    const zipFileInput = this.modal.querySelector('#dataZipFileInput') as HTMLInputElement;
+    zipFileInput?.addEventListener('change', async () => {
+      if (!zipFileInput.files || zipFileInput.files.length === 0 || !this.vfs) return;
+      const file = zipFileInput.files[0];
+      this.activeZipController = new ZipTaskController();
+      this.currentZipProgress = {
+        percent: 0,
+        currentFile: file.name,
+        processedFiles: 0,
+        totalFiles: 0,
+        isPaused: false,
+        isCancelled: false,
+        status: 'extracting'
+      };
+      this.showZipProgressUI();
+
+      try {
+        const result = await ZipService.importProjectZip(
+          file,
+          this.vfs,
+          this.activeZipController,
+          (progress) => {
+            this.currentZipProgress = progress;
+            this.updateZipProgressUI();
+          }
+        );
+        setTimeout(() => {
+          this.hideZipProgressUI();
+          if (this.onResetCallback) {
+            this.onResetCallback();
+          }
+          alert(`Successfully imported ${result.importedCount} files from ZIP archive.`);
+        }, 600);
+      } catch (err: any) {
+        if (!this.activeZipController.getCancelled()) {
+          alert('Import failed: ' + (err.message || err));
+        }
+        this.hideZipProgressUI();
+      }
+    });
+
+    // ZIP Pause & Cancel
+    this.modal.querySelector('#zipPauseBtn')?.addEventListener('click', () => {
+      if (this.activeZipController) {
+        const isPaused = this.activeZipController.togglePause();
+        const pauseBtn = this.modal.querySelector('#zipPauseBtn');
+        if (pauseBtn) pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+      }
+    });
+
+    this.modal.querySelector('#zipCancelBtn')?.addEventListener('click', () => {
+      if (this.activeZipController) {
+        this.activeZipController.cancel();
+        this.hideZipProgressUI();
+      }
     });
 
     // Reset button in General tab (only resets visual settings and starter template files)
@@ -796,5 +1018,45 @@ export class SettingsModal {
     });
 
     document.body.appendChild(overlay);
+  }
+
+  private showZipProgressUI(): void {
+    const container = this.modal.querySelector('#zipProgressContainer');
+    if (container) container.classList.remove('hidden');
+    const exportBtn = this.modal.querySelector('#dataExportZipBtn') as HTMLButtonElement;
+    if (exportBtn) exportBtn.disabled = true;
+    this.updateZipProgressUI();
+  }
+
+  private hideZipProgressUI(): void {
+    const container = this.modal.querySelector('#zipProgressContainer');
+    if (container) container.classList.add('hidden');
+    const exportBtn = this.modal.querySelector('#dataExportZipBtn') as HTMLButtonElement;
+    if (exportBtn) exportBtn.disabled = false;
+    this.currentZipProgress = null;
+    this.activeZipController = null;
+  }
+
+  private updateZipProgressUI(): void {
+    if (!this.currentZipProgress) return;
+    const statusText = this.modal.querySelector('#zipStatusText');
+    const percentText = this.modal.querySelector('#zipPercentText');
+    const progressBar = this.modal.querySelector('#zipProgressBar') as HTMLElement;
+    const pauseBtn = this.modal.querySelector('#zipPauseBtn');
+
+    if (statusText) {
+      statusText.textContent = this.currentZipProgress.currentFile 
+        ? `${this.currentZipProgress.status === 'compressing' ? 'Compressing' : 'Extracting'}: ${this.currentZipProgress.currentFile}` 
+        : 'Processing archive...';
+    }
+    if (percentText) {
+      percentText.textContent = `${this.currentZipProgress.percent}%`;
+    }
+    if (progressBar) {
+      progressBar.style.width = `${this.currentZipProgress.percent}%`;
+    }
+    if (pauseBtn && this.activeZipController) {
+      pauseBtn.textContent = this.activeZipController.getPaused() ? 'Resume' : 'Pause';
+    }
   }
 }

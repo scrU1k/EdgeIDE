@@ -43,6 +43,56 @@ export class RuntimeManager {
     return this.runtimes.find(r => r.id === 'pyodide') as PythonRuntime;
   }
 
+  public getJsRuntime(): JavaScriptRuntime {
+    return this.runtimes.find(r => r.id === 'quickjs') as JavaScriptRuntime;
+  }
+
+  public async executeSnippet(
+    code: string,
+    language: SupportedLanguage,
+    vfs: VirtualFileSystem,
+    onOutput: (msg: ConsoleMessage) => void
+  ): Promise<ExecutionResult> {
+    const runtime = this.getRuntimeForLanguage(language);
+    if (!runtime) {
+      const errMsg: ConsoleMessage = {
+        id: 'no_runtime_' + Date.now(),
+        type: 'error',
+        text: `Execution engine for "${language}" is not available for code snippets.`,
+        timestamp: Date.now()
+      };
+      onOutput(errMsg);
+      return {
+        success: false,
+        outputs: [errMsg],
+        executionTimeMs: 0,
+        error: 'No runtime available'
+      };
+    }
+
+    this.setStatus({ state: 'running', message: `Running selection in ${runtime.name}...` });
+
+    try {
+      const result = await runtime.run(code, vfs, onOutput);
+      this.setStatus({ state: result.success ? 'idle' : 'error', message: result.error });
+      return result;
+    } catch (e: any) {
+      this.setStatus({ state: 'error', message: e.message });
+      return {
+        success: false,
+        outputs: [],
+        executionTimeMs: 0,
+        error: e.message
+      };
+    } finally {
+      setTimeout(() => {
+        if (this.status.state !== 'loading_runtime') {
+          this.setStatus({ state: 'idle' });
+        }
+      }, 300);
+    }
+  }
+
   public async executeActiveFile(
     vfs: VirtualFileSystem,
     onOutput: (msg: ConsoleMessage) => void

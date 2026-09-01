@@ -1,4 +1,4 @@
-﻿export interface NativeHostStatus {
+export interface NativeHostStatus {
   available: boolean;
   hasPython: boolean;
   pythonVersion?: string;
@@ -10,6 +10,24 @@
 
 export class NativeHostBridge {
   private static cachedStatus: NativeHostStatus | null = null;
+  private static sessionToken: string | null = null;
+
+  private static async getSessionToken(): Promise<string | null> {
+    if (this.sessionToken) return this.sessionToken;
+    try {
+      const res = await fetch('/api/native-exec/session', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(2000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        this.sessionToken = data.token || null;
+        return this.sessionToken;
+      }
+    } catch {}
+    return null;
+  }
 
   public static async getStatus(forceRefresh = false): Promise<NativeHostStatus> {
     if (this.cachedStatus && !forceRefresh) {
@@ -17,6 +35,9 @@ export class NativeHostBridge {
     }
 
     try {
+      // Warm up session token handshake
+      void this.getSessionToken();
+
       const res = await fetch('/api/native-exec/status', {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
@@ -54,9 +75,17 @@ export class NativeHostBridge {
     exitCode: number;
     executionTimeMs: number;
   }> {
+    const token = await this.getSessionToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['X-EdgeIDE-Auth'] = token;
+    }
+
     const res = await fetch('/api/native-exec/run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ code })
     });
 
@@ -71,9 +100,17 @@ export class NativeHostBridge {
     output: string;
     exitCode: number;
   }> {
+    const token = await this.getSessionToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['X-EdgeIDE-Auth'] = token;
+    }
+
     const res = await fetch('/api/native-exec/shell', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ command })
     });
 

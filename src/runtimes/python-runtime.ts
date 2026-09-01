@@ -119,6 +119,7 @@ export class PythonRuntime implements LanguageRuntime {
       const blob = new Blob([PYODIDE_WORKER_SCRIPT], { type: 'application/javascript' });
       const blobUrl = URL.createObjectURL(blob);
       this.worker = new Worker(blobUrl);
+      URL.revokeObjectURL(blobUrl);
     }
     return this.worker;
   }

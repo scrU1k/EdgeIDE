@@ -4,21 +4,58 @@ import { exec, spawn } from 'child_process';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
+
+// Cryptographically secure session token for native execution authorization
+const serverSessionToken = crypto.randomBytes(24).toString('hex');
 
 function nativeExecutionPlugin(): Plugin {
   return {
     name: 'native-execution-bridge',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        // CORS headers for all native-exec endpoints
+        // Security gate for all native execution endpoints
         if (req.url?.startsWith('/api/native-exec')) {
-          res.setHeader('Access-Control-Allow-Origin', '*');
+          const secFetchSite = req.headers['sec-fetch-site'];
+          // Reject cross-site requests from untrusted external websites
+          if (secFetchSite === 'cross-site') {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Forbidden: Cross-site request rejected for security.' }));
+            return;
+          }
+
+          // Validate Origin header if present
+          const origin = req.headers['origin'];
+          if (origin) {
+            const isLocal = origin.startsWith('http://localhost') || 
+                            origin.startsWith('http://127.0.0.1') ||
+                            origin.startsWith('https://localhost') ||
+                            origin.startsWith('http://192.168.') ||
+                            origin.startsWith('http://172.') ||
+                            origin.startsWith('http://10.');
+            if (!isLocal) {
+              res.writeHead(403, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Forbidden: Origin is not trusted.' }));
+              return;
+            }
+            res.setHeader('Access-Control-Allow-Origin', origin);
+          } else {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+          }
+
           res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-EdgeIDE-Auth');
 
           if (req.method === 'OPTIONS') {
             res.writeHead(204);
             res.end();
+            return;
+          }
+
+          // 0. Session Auth Token Handshake (only accessible same-site / local)
+          if (req.url === '/api/native-exec/session' && req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ token: serverSessionToken }));
             return;
           }
 
@@ -39,6 +76,16 @@ function nativeExecutionPlugin(): Plugin {
               }));
             });
             return;
+          }
+
+          // Verify token for execution endpoints (run & shell)
+          const clientToken = req.headers['x-edgeide-auth'];
+          if (req.url === '/api/native-exec/run' || req.url === '/api/native-exec/shell') {
+            if (!clientToken || clientToken !== serverSessionToken) {
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Unauthorized: Invalid or missing authorization token.' }));
+              return;
+            }
           }
 
           // 2. Run Python Code on Host System
@@ -154,16 +201,17 @@ function p2pSignalingPlugin(): Plugin {
         if (req.url === '/api/p2p-relay/events') {
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
             'Access-Control-Allow-Origin': '*'
           });
           res.write('\n');
           clients.add(res);
 
-          req.on('close', () => {
-            clients.delete(res);
-          });
+          const cleanup = () => { clients.delete(res); };
+          req.on('close', cleanup);
+          req.on('end', cleanup);
+          res.on('error', cleanup);
           return;
         }
 
@@ -211,6 +259,24 @@ export default defineConfig({
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp'
+    }
+  },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@codemirror') || id.includes('@lezer') || id.includes('style-mod') || id.includes('w3c-keyname')) {
+            return 'vendor-codemirror';
+          }
+          if (id.includes('isomorphic-git') || id.includes('buffer')) {
+            return 'vendor-git';
+          }
+          if (id.includes('qrcode') || id.includes('jsqr')) {
+            return 'vendor-sharing';
+          }
+        }
+      }
     }
   }
 });

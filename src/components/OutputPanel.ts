@@ -104,13 +104,16 @@ export class OutputPanel {
 
   private listenToIframeMessages(): void {
     window.addEventListener('message', (event) => {
-      if (event.data && event.data.source === 'aero-ide-preview') {
-        this.addMessage({
-          id: 'iframe_msg_' + Date.now(),
-          type: event.data.type || 'stdout',
-          text: '[Preview Log] ' + event.data.text,
-          timestamp: Date.now()
-        });
+      // Validate that message originated strictly from our preview iframe
+      if (this.iframeEl && event.source === this.iframeEl.contentWindow) {
+        if (event.data && event.data.source === 'aero-ide-preview') {
+          this.addMessage({
+            id: 'iframe_msg_' + Date.now(),
+            type: event.data.type || 'stdout',
+            text: '[Preview Log] ' + event.data.text,
+            timestamp: Date.now()
+          });
+        }
       }
     });
   }

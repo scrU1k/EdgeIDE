@@ -36,8 +36,15 @@ class OnDeviceDictionary {
     }
   }
 
+  private readonly maxWords = 1500;
+
   private save(): void {
     try {
+      // Keep dictionary bounded to prevent localStorage exhaustion
+      if (this.words.size > this.maxWords) {
+        const arr = Array.from(this.words);
+        this.words = new Set(arr.slice(arr.length - this.maxWords));
+      }
       localStorage.setItem(this.storageKey, JSON.stringify(Array.from(this.words)));
     } catch {}
   }
