@@ -81,7 +81,8 @@ class MobileApp {
       this.settingsStore,
       (fileId) => this.switchFile(fileId),
       () => this.settingsModal.open('general'),
-      (fileId) => this.shareModal.open(fileId)
+      (fileId) => this.shareModal.open(fileId),
+      () => this.settingsModal.qrScannerModal.open()
     );
 
     // 4. Header

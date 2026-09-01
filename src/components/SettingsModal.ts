@@ -45,7 +45,7 @@ export class SettingsModal {
   private isAccentDropdownOpen: boolean = false;
   private isCodeThemeDropdownOpen: boolean = false;
   private qrDataUrl: string | null = null;
-  private qrScannerModal: QRScannerModal;
+  public qrScannerModal: QRScannerModal;
 
   constructor(
     parent: HTMLElement, 
@@ -409,13 +409,16 @@ export class SettingsModal {
           </button>
         </div>
 
-        <!-- Embedded Personal QR Code -->
-        <div class="pt-2 flex items-center gap-3">
-          <div class="w-16 h-16 rounded-xl bg-white p-1 shadow-md shrink-0 flex items-center justify-center">
+        <!-- Embedded Personal QR Code (Click to enlarge) -->
+        <div id="enlargeQrCardBtn" class="pt-2 flex items-center gap-3 cursor-pointer hover:bg-white/5 active:scale-98 transition-all p-1.5 rounded-xl border border-transparent hover:border-white/5">
+          <div class="w-16 h-16 rounded-xl bg-white p-1 shadow-md shrink-0 flex items-center justify-center relative group">
             ${this.qrDataUrl ? `<img src="${this.qrDataUrl}" alt="Device QR" class="w-full h-full object-contain">` : ''}
           </div>
           <div class="min-w-0 flex-1">
-            <div class="font-semibold text-xs text-zinc-200">Personal Offline QR Code</div>
+            <div class="font-semibold text-xs text-zinc-200 flex items-center gap-1.5">
+              <span>Personal Offline QR Code</span>
+              <span class="text-[10px] text-indigo-400 font-normal">Tap to enlarge</span>
+            </div>
             <div class="text-[11px] text-zinc-400">Other EdgeIDE users can scan this to pair directly.</div>
           </div>
         </div>
@@ -634,6 +637,10 @@ export class SettingsModal {
       this.qrScannerModal.open();
     });
 
+    this.modal.querySelector('#enlargeQrCardBtn')?.addEventListener('click', () => {
+      this.showEnlargedQrModal();
+    });
+
     const visibilitySelect = this.modal.querySelector('#sharingVisibilitySelect') as HTMLSelectElement;
     visibilitySelect?.addEventListener('change', () => {
       const val = visibilitySelect.value as SharingVisibility;
@@ -693,5 +700,45 @@ export class SettingsModal {
         themeChevron.classList.remove('rotate-180');
       }
     }
+  }
+
+  private showEnlargedQrModal(): void {
+    if (!this.qrDataUrl) return;
+    const s = this.store.get();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md select-none animate-fade-in';
+    overlay.innerHTML = `
+      <div class="bg-[#0c0c0f] border border-white/10 rounded-3xl w-full max-w-xs flex flex-col shadow-2xl overflow-hidden p-6 text-center space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="text-left">
+            <div class="font-bold text-sm text-zinc-100">${s.deviceName}</div>
+            <div class="text-[10px] font-mono text-zinc-400">${s.deviceId}</div>
+          </div>
+          <button id="enlargedQrCloseBtn" class="p-1.5 rounded-xl hover:bg-white/10 text-zinc-400 hover:text-white">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+
+        <div class="p-4 bg-white rounded-2xl w-60 h-60 mx-auto shadow-2xl flex items-center justify-center">
+          <img src="${this.qrDataUrl}" alt="Device QR Code" class="w-full h-full object-contain">
+        </div>
+
+        <div class="text-xs text-zinc-400">
+          Point another device's scanner at this QR code to connect and share files both ways.
+        </div>
+      </div>
+    `;
+
+    const closeOverlay = () => {
+      overlay.remove();
+    };
+
+    overlay.querySelector('#enlargedQrCloseBtn')?.addEventListener('click', closeOverlay);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeOverlay();
+    });
+
+    document.body.appendChild(overlay);
   }
 }

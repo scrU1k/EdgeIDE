@@ -41,11 +41,25 @@ export class QRService {
     async function initCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
         });
         videoElement.srcObject = stream;
         videoElement.setAttribute('playsinline', 'true');
-        await videoElement.play();
+        videoElement.setAttribute('webkit-playsinline', 'true');
+        videoElement.setAttribute('autoplay', 'true');
+        videoElement.muted = true;
+        videoElement.setAttribute('muted', 'true');
+        
+        try {
+          await videoElement.play();
+        } catch (playErr) {
+          console.warn('Direct video play error:', playErr);
+        }
+        
         requestAnimationFrame(tick);
       } catch (err: any) {
         if (onError) onError(err);

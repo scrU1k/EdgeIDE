@@ -15,6 +15,7 @@ export class FileTreeDrawer {
   private onSelectFileCallback: (fileId: string) => void;
   private onOpenSettings: () => void;
   public onShareFile?: (fileId: string) => void;
+  public onOpenQrScanner?: () => void;
 
   // Drawer Width Resizing
   private drawerWidthPx: number = 300;
@@ -37,13 +38,15 @@ export class FileTreeDrawer {
     settingsStore: SettingsStore,
     onSelectFile: (fileId: string) => void,
     onOpenSettings: () => void,
-    onShareFile?: (fileId: string) => void
+    onShareFile?: (fileId: string) => void,
+    onOpenQrScanner?: () => void
   ) {
     this.vfs = vfs;
     this.settingsStore = settingsStore;
     this.onSelectFileCallback = onSelectFile;
     this.onOpenSettings = onOpenSettings;
     this.onShareFile = onShareFile;
+    this.onOpenQrScanner = onOpenQrScanner;
 
     // Restore saved width
     try {
@@ -251,6 +254,13 @@ export class FileTreeDrawer {
           <button id="layoutToggleBtn" title="Toggle Desktop/Mobile layout" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 transition-all">
             ${s.viewMode === 'desktop' ? Icons.desktop : Icons.mobile}
           </button>
+
+          <!-- Immediate QR Scan Button -->
+          <button id="drawerScanQrBtn" title="Scan QR Code" class="p-2.5 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25 active:scale-95 transition-all">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+            </svg>
+          </button>
         </div>
       </div>
     `;
@@ -404,6 +414,16 @@ export class FileTreeDrawer {
     // Layout Toggle
     this.drawer.querySelector('#layoutToggleBtn')?.addEventListener('click', () => {
       this.settingsStore.toggleViewMode();
+    });
+
+    // Immediate QR Scan
+    this.drawer.querySelector('#drawerScanQrBtn')?.addEventListener('click', () => {
+      if (!document.body.classList.contains('desktop-mode')) {
+        this.close();
+      }
+      if (this.onOpenQrScanner) {
+        this.onOpenQrScanner();
+      }
     });
 
     // New File
