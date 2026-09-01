@@ -1,4 +1,4 @@
-import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, SUPPORTED_FORMATS } from '../settings/settings-store';
+import { SettingsStore, ACCENT_COLORS, FONT_FAMILIES, SUPPORTED_FORMATS, AppSettings } from '../settings/settings-store';
 import { Icons } from './icons';
 import { AppDialog } from './AppDialog';
 import { VirtualFileSystem } from '../vfs/vfs';
@@ -31,8 +31,10 @@ export class SettingsModal {
     this.container.appendChild(this.modal);
     parent.appendChild(this.container);
 
-    this.store.subscribe(() => {
-      if (this.isOpen) this.render();
+    this.store.subscribe((s) => {
+      if (this.isOpen) {
+        this.updateActiveStyles(s);
+      }
     });
   }
 
@@ -162,13 +164,13 @@ export class SettingsModal {
           </div>
         </div>
 
-        <!-- 4. Font Size Slider -->
+        <!-- 4. Font Size Slider (Continuous & Smooth) -->
         <div>
           <div class="flex justify-between items-center mb-2">
             <label class="font-semibold text-zinc-200">Editor Font Size</label>
             <span class="font-mono font-semibold" style="color: var(--accent-color);" id="fontSizeVal">${s.fontSize}px</span>
           </div>
-          <input id="fontSizeRange" type="range" min="11" max="24" step="0.5" value="${s.fontSize}" class="w-full h-2 rounded-lg cursor-pointer bg-[#141418] accent-indigo-500">
+          <input id="fontSizeRange" type="range" min="10" max="26" step="0.5" value="${s.fontSize}" class="w-full h-2 rounded-lg cursor-pointer bg-[#141418] accent-indigo-500 touch-pan-x">
         </div>
 
         <!-- 5. View Mode Switch -->
@@ -206,6 +208,54 @@ export class SettingsModal {
     `;
 
     this.attachEvents();
+  }
+
+  private updateActiveStyles(s: AppSettings): void {
+    // 1. Accent Color buttons
+    this.modal.querySelectorAll('.accent-btn').forEach(btn => {
+      const color = btn.getAttribute('data-accent');
+      const isSelected = s.accentColor.toLowerCase() === color?.toLowerCase();
+      if (isSelected) {
+        btn.className = 'accent-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border transition-all border-white bg-white/10 shadow-sm scale-105';
+      } else {
+        btn.className = 'accent-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border transition-all border-transparent bg-[#141418] hover:bg-[#1a1a20]';
+      }
+    });
+
+    // 2. Code Theme buttons
+    this.modal.querySelectorAll('.code-theme-btn').forEach(btn => {
+      const theme = btn.getAttribute('data-code-theme');
+      const isSelected = s.codeTheme === theme;
+      if (isSelected) {
+        btn.className = 'code-theme-btn p-2.5 rounded-xl text-left border flex items-center gap-2.5 transition-all border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold';
+      } else {
+        btn.className = 'code-theme-btn p-2.5 rounded-xl text-left border flex items-center gap-2.5 transition-all border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200';
+      }
+    });
+
+    // 3. Font Family buttons
+    this.modal.querySelectorAll('.font-family-btn').forEach(btn => {
+      const font = btn.getAttribute('data-font-family');
+      const isSelected = s.fontFamily === font;
+      if (isSelected) {
+        btn.className = 'font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all border-indigo-500 bg-indigo-500/15 text-indigo-200 font-semibold';
+      } else {
+        btn.className = 'font-family-btn p-2.5 rounded-xl text-left border flex items-center justify-between transition-all border-white/5 bg-[#141418] text-zinc-400 hover:text-zinc-200';
+      }
+    });
+
+    // 4. Font size label
+    const fontSizeVal = this.modal.querySelector('#fontSizeVal');
+    if (fontSizeVal) fontSizeVal.textContent = `${s.fontSize}px`;
+
+    // 5. View mode
+    const viewModeBtn = this.modal.querySelector('#viewModeToggleBtn');
+    if (viewModeBtn) {
+      viewModeBtn.innerHTML = `
+        ${s.viewMode === 'desktop' ? Icons.desktop : Icons.mobile}
+        <span class="capitalize">${s.viewMode}</span>
+      `;
+    }
   }
 
   private attachEvents(): void {
@@ -257,10 +307,11 @@ export class SettingsModal {
       });
     });
 
-    // Font Size Range
+    // Font Size Range (Continuous, smooth sliding)
     const fontSizeRange = this.modal.querySelector('#fontSizeRange') as HTMLInputElement;
     const fontSizeVal = this.modal.querySelector('#fontSizeVal') as HTMLElement;
-    fontSizeRange?.addEventListener('input', () => {
+    fontSizeRange?.addEventListener('input', (e) => {
+      e.stopPropagation();
       const sz = parseFloat(fontSizeRange.value);
       if (fontSizeVal) fontSizeVal.textContent = `${sz}px`;
       this.store.set({ fontSize: sz });

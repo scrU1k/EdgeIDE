@@ -496,11 +496,36 @@ export class VirtualFileSystem {
   public renameNode(id: string, newName: string): void {
     const node = this.state.files[id];
     if (node) {
+      const oldPath = node.path;
       node.name = newName;
       if (!node.isFolder) {
         node.language = detectLanguage(newName);
       }
+      
+      // Recompute path based on parent
+      const parent = node.parentId ? this.state.files[node.parentId] : null;
+      node.path = parent ? `${parent.path}/${newName}` : `/${newName}`;
       node.updatedAt = Date.now();
+
+      if (node.isFolder) {
+        const updateChildrenPaths = (parentId: string, parentPath: string) => {
+          for (const f of Object.values(this.state.files)) {
+            if (f.parentId === parentId) {
+              const oldChildPath = f.path;
+              f.path = `${parentPath}/${f.name}`;
+              if (!f.isFolder) {
+                NativeStorageBridge.renameNode(oldChildPath, f.path, f.content);
+              } else {
+                updateChildrenPaths(f.id, f.path);
+              }
+            }
+          }
+        };
+        updateChildrenPaths(node.id, node.path);
+      } else {
+        NativeStorageBridge.renameNode(oldPath, node.path, node.content);
+      }
+
       this.save();
     }
   }

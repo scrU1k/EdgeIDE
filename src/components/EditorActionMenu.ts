@@ -128,15 +128,15 @@ export class EditorActionMenu {
         <span id="wordWrapStatusBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-400">Off</span>
       </button>
 
-      <!-- Toggle Line Numbers (Hide / Show) -->
+      <!-- Toggle Line Numbers: [ Line # [hide] ] or [ Line # [show] ] -->
       <button data-action="toggle-line-numbers" class="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200 font-medium transition-colors">
         <div class="flex items-center gap-2.5">
           <svg class="w-4 h-4 text-teal-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
           </svg>
-          <span id="lineNumbersLabel">Hide Line Numbers</span>
+          <span>Line #</span>
         </div>
-        <span id="lineNumbersStatusBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-400">On</span>
+        <span id="lineNumbersStatusBadge" class="text-[10px] px-2 py-0.5 rounded bg-white/10 text-zinc-300 font-mono lowercase font-semibold">hide</span>
       </button>
 
       <!-- Toggle Comment -->
@@ -318,10 +318,8 @@ export class EditorActionMenu {
             break;
           case 'toggle-line-numbers':
             const showNums = this.editor.toggleLineNumbers();
-            const labelEl = this.menuDropdown.querySelector('#lineNumbersLabel');
             const numBadgeEl = this.menuDropdown.querySelector('#lineNumbersStatusBadge');
-            if (labelEl) labelEl.textContent = showNums ? 'Hide Line Numbers' : 'Show Line Numbers';
-            if (numBadgeEl) numBadgeEl.textContent = showNums ? 'On' : 'Off';
+            if (numBadgeEl) numBadgeEl.textContent = showNums ? 'hide' : 'show';
             break;
           case 'comment':
             this.editor.toggleComment();
@@ -366,7 +364,13 @@ export class EditorActionMenu {
       this.editor.setSearch(q, r);
 
       const stats = this.editor.getSearchStats(q);
-      this.matchBadge.textContent = `${stats.current}/${stats.total}`;
+      if (this.matchBadge) {
+        if (q) {
+          this.matchBadge.textContent = `${stats.current}/${stats.total}`;
+        } else {
+          this.matchBadge.textContent = '0/0';
+        }
+      }
     };
 
     this.findInput.addEventListener('input', updateSearch);
@@ -382,7 +386,7 @@ export class EditorActionMenu {
       updateSearch();
     });
 
-    this.findReplaceBar.querySelector('#replaceOneBtn')?.addEventListener('click', () => {
+    this.findReplaceBar.querySelector('#replaceNextBtn')?.addEventListener('click', () => {
       this.editor.replaceNext();
       updateSearch();
     });
@@ -392,7 +396,7 @@ export class EditorActionMenu {
       updateSearch();
     });
 
-    this.findReplaceBar.querySelector('#findCloseBtn')?.addEventListener('click', () => {
+    this.findReplaceBar.querySelector('#closeFindBtn')?.addEventListener('click', () => {
       this.closeFindBar();
     });
 
@@ -413,12 +417,10 @@ export class EditorActionMenu {
   public openMenu(): void {
     this.isMenuOpen = true;
 
-    // Sync line numbers label and badge
+    // Sync line numbers badge: "hide" when visible, "show" when hidden
     const showNums = this.editor.getShowLineNumbers();
-    const lineNumbersLabel = this.menuDropdown.querySelector('#lineNumbersLabel');
     const lineNumbersBadge = this.menuDropdown.querySelector('#lineNumbersStatusBadge');
-    if (lineNumbersLabel) lineNumbersLabel.textContent = showNums ? 'Hide Line Numbers' : 'Show Line Numbers';
-    if (lineNumbersBadge) lineNumbersBadge.textContent = showNums ? 'On' : 'Off';
+    if (lineNumbersBadge) lineNumbersBadge.textContent = showNums ? 'hide' : 'show';
 
     // Sync word wrap badge
     const isWrap = this.editor.getIsWordWrap();

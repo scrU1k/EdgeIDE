@@ -28,6 +28,7 @@ export class CodeEditor {
   private currentLanguage: SupportedLanguage = 'plaintext';
   private onChangeCallback: ((content: string) => void) | null = null;
   private onSelectionChangeCallback: ((cursorCount: number) => void) | null = null;
+  private dictDebounceTimer: any = null;
 
   public init(
     container: HTMLElement, 
@@ -183,7 +184,11 @@ export class CodeEditor {
             if (this.onChangeCallback) {
               this.onChangeCallback(docStr);
             }
-            globalDictionary.recordWords(docStr);
+            // 1-second delay so user has time to finish typing / correct typos before adding to personal dictionary
+            clearTimeout(this.dictDebounceTimer);
+            this.dictDebounceTimer = setTimeout(() => {
+              globalDictionary.recordWords(docStr);
+            }, 1000);
           }
           if (update.selectionSet && this.onSelectionChangeCallback) {
             this.onSelectionChangeCallback(update.state.selection.ranges.length);
