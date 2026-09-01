@@ -1,5 +1,6 @@
 import { SettingsStore, SharingVisibility } from '../settings/settings-store';
 import { VirtualFileSystem } from '../vfs/vfs';
+import { WebRTCMesh } from './webrtc-mesh';
 
 export interface PeerDevice {
   deviceId: string;
@@ -43,7 +44,7 @@ export type TransferEvent =
   | { type: 'transfer_rejected'; transferId: string; reason: string };
 
 export class P2PEngine {
-  private channel: BroadcastChannel;
+  private mesh: WebRTCMesh;
   private settingsStore: SettingsStore;
   private vfs: VirtualFileSystem;
   private discoveredPeers: Map<string, PeerDevice> = new Map();
@@ -56,9 +57,7 @@ export class P2PEngine {
   constructor(settingsStore: SettingsStore, vfs: VirtualFileSystem) {
     this.settingsStore = settingsStore;
     this.vfs = vfs;
-    this.channel = new BroadcastChannel('edge_ide_p2p_mesh_v1');
-
-    this.channel.onmessage = (e) => this.handleMessage(e.data);
+    this.mesh = new WebRTCMesh(this.settingsStore.get().deviceId, (data) => this.handleMessage(data));
 
     this.startHeartbeat();
     this.startPeerPruning();
@@ -92,7 +91,7 @@ export class P2PEngine {
       const s = this.settingsStore.get();
       if (s.sharingVisibility === 'offline') return;
 
-      this.channel.postMessage({
+      this.mesh.broadcast({
         type: 'presence',
         deviceId: s.deviceId,
         deviceName: s.deviceName,
@@ -158,7 +157,7 @@ export class P2PEngine {
     this.activeTransfer = transfer;
 
     // Send transfer request packet over local mesh
-    this.channel.postMessage({
+    this.mesh.broadcast({
       type: 'transfer_request',
       transferId,
       senderId: s.deviceId,
@@ -181,7 +180,7 @@ export class P2PEngine {
     if (!this.activeTransfer || this.activeTransfer.transferId !== transferId) return;
 
     this.activeTransfer.startTime = Date.now();
-    this.channel.postMessage({
+    this.mesh.broadcast({
       type: 'transfer_accept',
       transferId,
       receiverId: this.settingsStore.get().deviceId
@@ -192,7 +191,7 @@ export class P2PEngine {
    * Receiver rejects an incoming transfer request.
    */
   public rejectTransfer(transferId: string, reason: string = 'User declined'): void {
-    this.channel.postMessage({
+    this.mesh.broadcast({
       type: 'transfer_reject',
       transferId,
       reason
@@ -212,7 +211,7 @@ export class P2PEngine {
     const tId = this.activeTransfer.transferId;
     this.activeTransfer.isCancelled = true;
 
-    this.channel.postMessage({
+    this.mesh.broadcast({
       type: 'transfer_cancel',
       transferId: tId
     });
@@ -228,7 +227,7 @@ export class P2PEngine {
     if (!this.activeTransfer || this.activeTransfer.isCompleted || this.activeTransfer.isCancelled) return;
 
     this.activeTransfer.isPaused = !this.activeTransfer.isPaused;
-    this.channel.postMessage({
+    this.mesh.broadcast({
       type: 'transfer_pause_toggle',
       transferId: this.activeTransfer.transferId,
       isPaused: this.activeTransfer.isPaused
@@ -246,7 +245,7 @@ export class P2PEngine {
    */
   public requestFilesFromPeer(targetPeerId: string): void {
     const s = this.settingsStore.get();
-    this.channel.postMessage({
+    this.mesh.broadcast({
       type: 'pull_request',
       requesterId: s.deviceId,
       requesterName: s.deviceName,
@@ -293,7 +292,7 @@ export class P2PEngine {
         const isSenderTrusted = this.settingsStore.isTrusted(data.senderId);
 
         if (myVisibility === 'trusted' && !isSenderTrusted) {
-          this.channel.postMessage({
+          this.mesh.broadcast({
             type: 'transfer_reject',
             transferId: data.transferId,
             reason: 'Receiver only accepts transfers from Trusted Devices.'
@@ -394,7 +393,7 @@ export class P2PEngine {
         const end = Math.min(start + CHUNK_SIZE, payloadStr.length);
         const chunkData = payloadStr.slice(start, end);
 
-        this.channel.postMessage({
+        this.mesh.broadcast({
           type: 'transfer_chunk',
           transferId: this.activeTransfer.transferId,
           chunkIndex,
@@ -485,6 +484,6 @@ export class P2PEngine {
   public destroy(): void {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     if (this.peerPruneInterval) clearInterval(this.peerPruneInterval);
-    this.channel.close();
+    this.mesh.destroy();
   }
 }

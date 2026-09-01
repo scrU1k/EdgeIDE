@@ -77,6 +77,12 @@ export class SettingsModal {
         } else {
           this.render();
         }
+      },
+      this.vfs,
+      (_fileId) => {
+        if (this.onResetCallback) {
+          this.onResetCallback();
+        }
       }
     );
 

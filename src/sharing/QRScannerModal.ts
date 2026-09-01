@@ -1,6 +1,8 @@
 import { QRService } from './qr-service';
 import { SettingsStore } from '../settings/settings-store';
 import { P2PEngine } from './p2p-engine';
+import { VirtualFileSystem } from '../vfs/vfs';
+import { getFileIcon } from '../components/icons';
 
 export interface ScannedDevice {
   deviceId: string;
@@ -14,19 +16,25 @@ export class QRScannerModal {
   private canvasEl: HTMLCanvasElement | null = null;
   private stopScanner: (() => void) | null = null;
   private settingsStore: SettingsStore;
+  private vfs?: VirtualFileSystem;
   private p2pEngine?: P2PEngine;
   private onSendToDevice?: (device: ScannedDevice) => void;
+  private onFileReceived?: (fileId: string) => void;
   private scannedDevice: ScannedDevice | null = null;
 
   constructor(
     parent: HTMLElement, 
     settingsStore: SettingsStore, 
     p2pEngine?: P2PEngine,
-    onSendToDevice?: (device: ScannedDevice) => void
+    onSendToDevice?: (device: ScannedDevice) => void,
+    vfs?: VirtualFileSystem,
+    onFileReceived?: (fileId: string) => void
   ) {
     this.settingsStore = settingsStore;
     this.p2pEngine = p2pEngine;
     this.onSendToDevice = onSendToDevice;
+    this.vfs = vfs;
+    this.onFileReceived = onFileReceived;
 
     this.container = document.createElement('div');
     this.container.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md hidden select-none';
@@ -83,7 +91,7 @@ export class QRScannerModal {
           </div>
 
           <div id="scannerStatusText" class="text-xs text-zinc-400">
-            Point camera at another EdgeIDE screen to pair or exchange files both ways.
+            Point camera at another EdgeIDE screen to pair or transfer files instantly.
           </div>
         </div>
       </div>
@@ -117,6 +125,37 @@ export class QRScannerModal {
   private handleScanResult(data: string): void {
     try {
       const parsed = typeof data === 'object' ? data : JSON.parse(data);
+
+      // 1. Direct Instant File Transfer QR
+      if (parsed && (parsed.type === 'file_transfer' || parsed.files)) {
+        if (this.stopScanner) {
+          this.stopScanner();
+          this.stopScanner = null;
+        }
+
+        const files: Array<{ name: string; content: string }> = parsed.files || [];
+        const senderName = parsed.deviceName || parsed.senderName || 'Device';
+        let lastCreatedId: string | null = null;
+
+        if (this.vfs && files.length > 0) {
+          for (const f of files) {
+            const cleanName = f.name.replace(/^[/\\]+/, '');
+            const existing = this.vfs.getFileByPath('/' + cleanName);
+            if (existing) {
+              this.vfs.updateContent(existing.id, f.content);
+              lastCreatedId = existing.id;
+            } else {
+              const created = this.vfs.createFile(cleanName, null, f.content);
+              lastCreatedId = created.id;
+            }
+          }
+        }
+
+        this.renderReceivedFilesView(senderName, files, lastCreatedId);
+        return;
+      }
+
+      // 2. Device Profile / Connection Pairing QR
       if (parsed && (parsed.deviceId || parsed.id)) {
         if (this.stopScanner) {
           this.stopScanner();
@@ -131,7 +170,6 @@ export class QRScannerModal {
           visibility: parsed.visibility || 'everyone'
         };
 
-        // Auto-register peer
         this.renderActionSheet();
         return;
       }
@@ -151,13 +189,66 @@ export class QRScannerModal {
     setTimeout(() => this.close(), 1500);
   }
 
+  private renderReceivedFilesView(senderName: string, files: Array<{ name: string; content: string }>, targetFileId: string | null): void {
+    this.container.innerHTML = `
+      <div class="bg-[#0c0c0f] border border-white/10 rounded-2xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+        <div class="flex items-center justify-between px-5 py-4 bg-[#0c0c0f] border-b border-white/5">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 text-base font-bold">✓</span>
+            <h2 class="font-bold text-sm text-zinc-100">Files Received</h2>
+          </div>
+          <button id="receivedCloseBtn" class="p-1.5 rounded-xl hover:bg-white/5 text-zinc-400 hover:text-zinc-200">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="p-6 text-center space-y-4">
+          <div class="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400 text-2xl font-bold">
+            ✓
+          </div>
+
+          <div>
+            <div class="font-bold text-sm text-zinc-100">Transferred from ${senderName}</div>
+            <div class="text-xs text-zinc-400 mt-1">${files.length} file(s) saved directly into your workspace.</div>
+          </div>
+
+          <div class="space-y-1.5 max-h-36 overflow-y-auto text-left">
+            ${files.map(f => `
+              <div class="p-2 bg-[#141418] border border-white/5 rounded-xl flex items-center justify-between">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span>${getFileIcon(f.name.split('.').pop() || '')}</span>
+                  <span class="text-xs font-mono text-zinc-200 truncate">${f.name}</span>
+                </div>
+                <span class="text-[10px] font-mono text-zinc-400 shrink-0 ml-2">${(f.content.length / 1024).toFixed(1)} KB</span>
+              </div>
+            `).join('')}
+          </div>
+
+          <button id="openReceivedFileBtn" class="w-full py-3 rounded-xl font-semibold text-xs text-white transition-all shadow-md active:scale-95" style="background-color: var(--accent-color);">
+            Open in Editor
+          </button>
+        </div>
+      </div>
+    `;
+
+    this.container.querySelector('#receivedCloseBtn')?.addEventListener('click', () => this.close());
+    this.container.querySelector('#openReceivedFileBtn')?.addEventListener('click', () => {
+      this.close();
+      if (targetFileId && this.onFileReceived) {
+        this.onFileReceived(targetFileId);
+      }
+    });
+  }
+
   private renderActionSheet(): void {
     if (!this.scannedDevice) return;
     const dev = this.scannedDevice;
     const isTrusted = this.settingsStore.isTrusted(dev.deviceId);
 
     this.container.innerHTML = `
-      <div class="bg-[#0c0c0f] border border-white/10 rounded-2xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden">
+      <div class="bg-[#0c0c0f] border border-white/10 rounded-2xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden animate-fade-in">
         <div class="flex items-center justify-between px-5 py-4 bg-[#0c0c0f] border-b border-white/5">
           <div class="flex items-center gap-2">
             <span class="text-emerald-400 text-sm">✓</span>
@@ -232,7 +323,7 @@ export class QRScannerModal {
       if (this.scannedDevice && this.p2pEngine) {
         this.p2pEngine.requestFilesFromPeer(this.scannedDevice.deviceId);
         const statusMsg = document.createElement('div');
-        statusMsg.className = 'p-2 bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-xs text-cyan-200 mt-2';
+        statusMsg.className = 'p-2.5 bg-cyan-500/20 border border-cyan-500/30 rounded-xl text-xs text-cyan-200 mt-2 animate-fade-in font-medium';
         statusMsg.textContent = `Requested files from ${this.scannedDevice.deviceName}...`;
         this.container.querySelector('.space-y-2')?.appendChild(statusMsg);
         setTimeout(() => this.close(), 1500);

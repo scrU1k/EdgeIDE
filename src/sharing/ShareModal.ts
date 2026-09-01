@@ -158,13 +158,44 @@ export class ShareModal {
 
   private async generateDeviceQr(): Promise<void> {
     const s = this.settingsStore.get();
-    const payload = JSON.stringify({
-      edgeide: true,
-      deviceId: s.deviceId,
-      deviceName: s.deviceName,
-      visibility: s.sharingVisibility
-    });
-    this.qrDataUrl = await QRService.generateQRDataUrl(payload, '#000000', '#ffffff');
+    const files = this.getFilesToShare();
+
+    let payload: any;
+    if (files.length > 0) {
+      payload = {
+        edgeide: true,
+        type: 'file_transfer',
+        deviceId: s.deviceId,
+        deviceName: s.deviceName,
+        files: files.map(f => ({
+          name: f.name,
+          size: f.size,
+          content: f.content
+        }))
+      };
+    } else {
+      payload = {
+        edgeide: true,
+        type: 'device_pair',
+        deviceId: s.deviceId,
+        deviceName: s.deviceName,
+        visibility: s.sharingVisibility
+      };
+    }
+
+    try {
+      this.qrDataUrl = await QRService.generateQRDataUrl(JSON.stringify(payload), '#000000', '#ffffff');
+    } catch {
+      // Fallback to device pairing QR if content exceeds single QR capacity
+      const fallbackPayload = {
+        edgeide: true,
+        type: 'device_pair',
+        deviceId: s.deviceId,
+        deviceName: s.deviceName,
+        visibility: s.sharingVisibility
+      };
+      this.qrDataUrl = await QRService.generateQRDataUrl(JSON.stringify(fallbackPayload), '#000000', '#ffffff');
+    }
   }
 
   private render(): void {
