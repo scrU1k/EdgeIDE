@@ -6,7 +6,30 @@ let pyodide = null;
 let initPromise = null;
 let installedPackages = new Set(['micropip', 'packaging']);
 
-async function getPyodide() {
+// Sandbox lockdown: Prevent exfiltration and origin storage access via Pyodide JS interop
+const restrictedKeys = ['indexedDB', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'caches', 'Worker', 'SharedWorker'];
+for (const key of restrictedKeys) {
+  try {
+    Object.defineProperty(self, key, {
+      get() { throw new Error('Security Exception: Access to ' + key + ' is blocked in this sandbox.'); },
+      configurable: false
+    });
+  } catch (err) {}
+}
+
+// Proxy fetch to only allow Pyodide and PyPI downloads, preventing data exfiltration
+const originalFetch = self.fetch;
+Object.defineProperty(self, 'fetch', {
+  value: async function(url, options) {
+    const urlStr = String(url);
+    if (!urlStr.startsWith('https://cdn.jsdelivr.net') && !urlStr.startsWith('https://pypi.org') && !urlStr.startsWith('https://files.pythonhosted.org')) {
+      throw new Error('Security Exception: fetch is restricted to PyPI and jsdelivr in this sandbox.');
+    }
+    return originalFetch.apply(this, arguments);
+  },
+  configurable: false,
+  writable: false
+});
   if (pyodide) return pyodide;
   if (initPromise) return initPromise;
 

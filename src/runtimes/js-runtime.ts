@@ -11,7 +11,7 @@ self.onmessage = async (e) => {
   for (const key of restrictedKeys) {
     try {
       Object.defineProperty(self, key, {
-        get() { throw new Error(`Security Exception: Access to ${key} is blocked in this sandbox.`); },
+        get() { throw new Error('Security Exception: Access to ' + key + ' is blocked in this sandbox.'); },
         configurable: false
       });
     } catch (err) {}
