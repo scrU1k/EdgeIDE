@@ -1,5 +1,6 @@
 import { VirtualNode, ProjectState, SupportedLanguage } from './types';
 import { NativeStorageBridge } from './native-storage';
+import { EdgeIDBStorage } from './indexeddb-storage';
 
 const STORAGE_KEY = 'edge_ide_vfs_state_v1';
 
@@ -306,14 +307,69 @@ export class VirtualFileSystem {
   private state: ProjectState;
   private listeners: Array<() => void> = [];
   private saveDebounceTimer: any = null;
+  private pathIndex: Map<string, string> = new Map();
+  private childrenIndex: Map<string | null, Set<string>> = new Map();
+  private nameIndex: Map<string, string> = new Map();
 
   constructor() {
     this.state = this.loadFromStorage();
+    this.rebuildIndices();
+    this.initIndexedDB();
 
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', () => {
         this.save(true);
       });
+    }
+  }
+
+  private async initIndexedDB(): Promise<void> {
+    try {
+      const idbState = await EdgeIDBStorage.get<ProjectState>(STORAGE_KEY);
+      if (idbState && idbState.files && idbState.activeFileId) {
+        this.state = idbState;
+        this.rebuildIndices();
+        this.notify();
+      } else if (this.state) {
+        // Migrate initial / existing localStorage state into IndexedDB
+        await EdgeIDBStorage.set(STORAGE_KEY, this.state);
+      }
+    } catch (err) {
+      console.warn('[VFS] IndexedDB initialization note:', err);
+    }
+  }
+
+  private normalizePath(path: string): string {
+    let clean = path.replace(/\\/g, '/').replace(/\/+/g, '/');
+    if (!clean.startsWith('/')) clean = '/' + clean;
+    if (clean.length > 1 && clean.endsWith('/')) clean = clean.slice(0, -1);
+    return clean;
+  }
+
+  private rebuildIndices(): void {
+    this.pathIndex.clear();
+    this.childrenIndex.clear();
+    this.nameIndex.clear();
+
+    for (const node of Object.values(this.state.files)) {
+      if (node.isDraft) continue;
+      const cleanPath = this.normalizePath(node.path);
+      this.pathIndex.set(cleanPath, node.id);
+
+      const pId = node.parentId;
+      let childSet = this.childrenIndex.get(pId);
+      if (!childSet) {
+        childSet = new Set<string>();
+        this.childrenIndex.set(pId, childSet);
+      }
+      childSet.add(node.id);
+
+      if (!node.isFolder) {
+        const lowerName = node.name.toLowerCase();
+        if (!this.nameIndex.has(lowerName)) {
+          this.nameIndex.set(lowerName, node.id);
+        }
+      }
     }
   }
 
@@ -335,7 +391,11 @@ export class VirtualFileSystem {
     };
   }
 
-  public save(immediate: boolean = true): void {
+  public save(immediate: boolean = true, rebuild: boolean = true): void {
+    if (rebuild) {
+      this.rebuildIndices();
+    }
+
     if (!immediate) {
       if (this.saveDebounceTimer !== null) {
         clearTimeout(this.saveDebounceTimer);
@@ -355,16 +415,17 @@ export class VirtualFileSystem {
   }
 
   private flushSave(): void {
+    // 1. Asynchronous write to IndexedDB (Primary backing store, supports hundreds of MBs)
+    EdgeIDBStorage.set(STORAGE_KEY, this.state);
+
+    // 2. Synchronous write to localStorage (Cache for instant bootstrap, catch quota error)
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
-      this.notify();
-    } catch (e: any) {
-      if (e?.name === 'QuotaExceededError' || e?.code === 22) {
-        console.warn('[VFS] Storage quota warning: Project size is reaching browser limits.');
-      } else {
-        console.error('Failed to save VFS state', e);
-      }
+    } catch {
+      // Gracefully ignore QuotaExceededError since IndexedDB holds the authoritative full state
     }
+
+    this.notify();
   }
 
   public subscribe(fn: () => void): () => void {
@@ -401,6 +462,10 @@ export class VirtualFileSystem {
   }
 
   public getFileByName(name: string): VirtualNode | null {
+    const id = this.nameIndex.get(name.toLowerCase());
+    if (id && this.state.files[id] && !this.state.files[id].isFolder) {
+      return this.state.files[id];
+    }
     return Object.values(this.state.files).find(f => !f.isFolder && f.name.toLowerCase() === name.toLowerCase()) || null;
   }
 
@@ -413,9 +478,11 @@ export class VirtualFileSystem {
   }
 
   public getNodeByPath(path: string): VirtualNode | null {
-    let clean = path.replace(/\\/g, '/').replace(/\/+/g, '/');
-    if (!clean.startsWith('/')) clean = '/' + clean;
-    if (clean.length > 1 && clean.endsWith('/')) clean = clean.slice(0, -1);
+    const clean = this.normalizePath(path);
+    const id = this.pathIndex.get(clean);
+    if (id && this.state.files[id] && !this.state.files[id].isDraft) {
+      return this.state.files[id];
+    }
     return Object.values(this.state.files).find(f => f.path === clean && !f.isDraft) || null;
   }
 
@@ -425,16 +492,23 @@ export class VirtualFileSystem {
   }
 
   public getChildren(parentId: string | null): VirtualNode[] {
-    return Object.values(this.state.files)
-      .filter(f => f.parentId === parentId && !f.isDraft)
-      .sort((a, b) => {
-        if (a.isFolder && !b.isFolder) return -1;
-        if (!a.isFolder && b.isFolder) return 1;
-        if (a.order !== undefined && b.order !== undefined) {
-          return a.order - b.order;
-        }
-        return a.name.localeCompare(b.name);
-      });
+    const childIds = this.childrenIndex.get(parentId);
+    if (!childIds || childIds.size === 0) return [];
+    const children: VirtualNode[] = [];
+    for (const id of childIds) {
+      const node = this.state.files[id];
+      if (node && !node.isDraft) {
+        children.push(node);
+      }
+    }
+    return children.sort((a, b) => {
+      if (a.isFolder && !b.isFolder) return -1;
+      if (!a.isFolder && b.isFolder) return 1;
+      if (a.order !== undefined && b.order !== undefined) {
+        return a.order - b.order;
+      }
+      return a.name.localeCompare(b.name);
+    });
   }
 
   public reorderNode(sourceId: string, targetId: string, insertBefore: boolean = true): void {
@@ -510,7 +584,7 @@ export class VirtualFileSystem {
     if (!node || node.isFolder) return;
     node.content = content;
     node.updatedAt = Date.now();
-    this.save(false);
+    this.save(false, false);
     if (!node.isDraft) {
       NativeStorageBridge.saveFile(node.path, content);
     }

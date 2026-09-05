@@ -20,6 +20,10 @@ export class SyntaxGuidesModal {
     this.container.classList.add('hidden');
   }
 
+  public isOpen(): boolean {
+    return !this.container.classList.contains('hidden');
+  }
+
   private render(): void {
     this.container.innerHTML = `
       <div class="bg-[#0c0c0f] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">

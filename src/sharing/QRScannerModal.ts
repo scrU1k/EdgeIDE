@@ -57,6 +57,10 @@ export class QRScannerModal {
     this.scannedDevice = null;
   }
 
+  public isOpen(): boolean {
+    return !this.container.classList.contains('hidden');
+  }
+
   private render(): void {
     if (this.scannedDevice) {
       this.renderActionSheet();
@@ -139,7 +143,10 @@ export class QRScannerModal {
 
         if (this.vfs && files.length > 0) {
           for (const f of files) {
-            const cleanName = f.name.replace(/^[/\\]+/, '');
+            const parts = f.name.replace(/\\/g, '/').split('/').filter(p => p.trim().length > 0 && p !== '.' && p !== '..');
+            if (parts.length === 0) continue;
+            const cleanName = parts.join('/');
+            
             const existing = this.vfs.getFileByPath('/' + cleanName);
             if (existing) {
               this.vfs.updateContent(existing.id, f.content);

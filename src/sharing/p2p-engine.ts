@@ -487,7 +487,9 @@ export class P2PEngine {
         // Auto-save received files into VFS
         let lastCreatedId: string | null = null;
         for (const rf of receivedFiles) {
-          const cleanName = rf.name.replace(/^[/\\]+/, '');
+          const parts = rf.name.replace(/\\/g, '/').split('/').filter(p => p.trim().length > 0 && p !== '.' && p !== '..');
+          if (parts.length === 0) continue;
+          const cleanName = parts.join('/');
           const existing = this.vfs.getFileByPath('/' + cleanName);
           if (existing) {
             this.vfs.updateContent(existing.id, rf.content);

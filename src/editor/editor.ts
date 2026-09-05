@@ -673,6 +673,10 @@ export class CodeEditor {
   }
 
   public destroy(): void {
+    if (this.dictDebounceTimer !== null) {
+      clearTimeout(this.dictDebounceTimer);
+      this.dictDebounceTimer = null;
+    }
     this.view?.destroy();
     this.view = null;
   }

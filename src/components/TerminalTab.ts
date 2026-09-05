@@ -10,6 +10,8 @@ export class TerminalTab {
   private term: Terminal;
   private fitAddon: FitAddon;
   private shell: VirtualShell;
+  private resizeObserver: ResizeObserver | null = null;
+  private onResizeHandler: (() => void) | null = null;
 
   private currentInput: string = '';
   private history: string[] = [];
@@ -63,10 +65,10 @@ export class TerminalTab {
     this.term.open(this.container);
 
     // Setup ResizeObserver to always keep terminal columns fitted to exact screen width
-    const resizeObserver = new ResizeObserver(() => {
+    this.resizeObserver = new ResizeObserver(() => {
       requestAnimationFrame(() => this.fit());
     });
-    resizeObserver.observe(this.container);
+    this.resizeObserver.observe(this.container);
 
     // Ensure monospace font is measured accurately after fonts load
     if (document.fonts && document.fonts.ready) {
@@ -185,7 +187,8 @@ export class TerminalTab {
       }
     });
 
-    window.addEventListener('resize', () => this.fit());
+    this.onResizeHandler = () => this.fit();
+    window.addEventListener('resize', this.onResizeHandler);
   }
 
   private replaceCurrentLine(newText: string): void {
@@ -231,5 +234,20 @@ export class TerminalTab {
 
   public clear(): void {
     this.term.clear();
+  }
+
+  public destroy(): void {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    if (this.onResizeHandler) {
+      window.removeEventListener('resize', this.onResizeHandler);
+      this.onResizeHandler = null;
+    }
+    try {
+      this.term.dispose();
+    } catch {}
+    this.container.remove();
   }
 }

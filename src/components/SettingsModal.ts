@@ -42,7 +42,7 @@ export class SettingsModal {
   private vfs?: VirtualFileSystem;
   private onResetCallback?: () => void;
   private activeTab: 'general' | 'data' | 'share' = 'general';
-  private expandedCategories: Set<string> = new Set(['programming', 'notes']);
+  private expandedCategories: Set<string> = new Set<string>();
 
   private isAccentDropdownOpen: boolean = false;
   private isCodeThemeDropdownOpen: boolean = false;
@@ -104,6 +104,8 @@ export class SettingsModal {
     if (tab) this.activeTab = tab;
     this.isAccentDropdownOpen = false;
     this.isCodeThemeDropdownOpen = false;
+    this.isFontDropdownOpen = false;
+    this.expandedCategories.clear();
     this.container.classList.remove('hidden');
     this.render();
   }
@@ -112,6 +114,10 @@ export class SettingsModal {
     this.isAccentDropdownOpen = false;
     this.isCodeThemeDropdownOpen = false;
     this.container.classList.add('hidden');
+  }
+
+  public isOpen(): boolean {
+    return !this.container.classList.contains('hidden');
   }
 
   private toggleCategory(catId: string): void {
@@ -174,7 +180,11 @@ export class SettingsModal {
       visibility: s.sharingVisibility,
       relayUrl: relayBase
     });
-    this.qrDataUrl = await QRService.generateQRDataUrl(payload, '#000000', '#ffffff');
+    this.qrDataUrl = await QRService.generateQRDataUrl(payload, {
+      accentColor: s.accentColor,
+      badgeType: 'device',
+      label: 'DEVICE PAIR'
+    });
   }
 
   private async render(): Promise<void> {
@@ -697,7 +707,8 @@ export class SettingsModal {
           (progress) => {
             this.currentZipProgress = progress;
             this.updateZipProgressUI();
-          }
+          },
+          this.store
         );
         setTimeout(() => {
           this.hideZipProgressUI();
@@ -734,6 +745,20 @@ export class SettingsModal {
       this.showZipProgressUI();
 
       try {
+        const isValid = await ZipService.validateZipSignature(file);
+        if (!isValid) {
+          const proceed = await AppDialog.confirm({
+            title: 'External ZIP Archive',
+            message: 'This ZIP archive does not appear to be an EdgeIDE export or lacks a valid signature. It may contain potentially unsafe files or unexpected settings. Are you sure you want to import it?',
+            confirmText: 'Import Anyway',
+            cancelText: 'Cancel'
+          });
+          if (!proceed) {
+            this.hideZipProgressUI();
+            return;
+          }
+        }
+
         const result = await ZipService.importProjectZip(
           file,
           this.vfs,
@@ -741,7 +766,8 @@ export class SettingsModal {
           (progress) => {
             this.currentZipProgress = progress;
             this.updateZipProgressUI();
-          }
+          },
+          this.store
         );
         setTimeout(() => {
           this.hideZipProgressUI();
@@ -810,6 +836,7 @@ export class SettingsModal {
         const val = btn.getAttribute('data-accent-val');
         if (val) {
           this.store.set({ accentColor: val });
+          this.generateDeviceQr();
         }
         this.isAccentDropdownOpen = false;
         this.syncDropdownVisibility();
@@ -998,11 +1025,31 @@ export class SettingsModal {
           </button>
         </div>
 
-        <div class="p-4 bg-white rounded-2xl w-72 h-72 mx-auto shadow-2xl flex items-center justify-center">
-          <img src="${this.qrDataUrl}" alt="Device QR Code" class="w-full h-full object-contain">
+        <!-- IDE Code Card -->
+        <div class="p-4 bg-[#111117] border border-white/10 rounded-2xl max-w-[310px] mx-auto shadow-2xl space-y-3">
+          <!-- IDE Terminal Window Header -->
+          <div class="w-full flex items-center justify-between pb-2 border-b border-white/5">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-[#ef4444]"></span>
+              <span class="w-2 h-2 rounded-full bg-[#eab308]"></span>
+              <span class="w-2 h-2 rounded-full bg-[#22c55e]"></span>
+              <span class="text-[11px] font-mono text-zinc-400 ml-1.5 truncate max-w-[140px]">${s.deviceName}.qr</span>
+            </div>
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-white/5 font-semibold" style="color: var(--accent-color);">&lt;PAIRING/&gt;</span>
+          </div>
+
+          <!-- QR Canvas View -->
+          <div class="p-2 bg-white rounded-xl aspect-square w-full shadow-inner flex items-center justify-center overflow-hidden">
+            <img src="${this.qrDataUrl}" alt="Device QR Code" class="w-full h-full object-contain">
+          </div>
+
+          <!-- Terminal Comment Footer -->
+          <div class="text-[10px] font-mono text-zinc-500">
+            // scan with EdgeIDE camera scanner
+          </div>
         </div>
 
-        <div class="text-xs text-zinc-400">
+        <div class="text-[11px] text-zinc-400 max-w-[270px] mx-auto">
           Point another device's scanner at this QR code to connect and share files both ways.
         </div>
       </div>

@@ -11,12 +11,17 @@ async function getPyodide() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    postMessage({ type: 'msg', msgType: 'system', text: '⏳ Loading Pyodide CPython WebAssembly engine...' });
-    importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js");
-    
-    pyodide = await loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/"
-    });
+    postMessage({ type: 'msg', msgType: 'system', text: 'Loading Pyodide CPython WebAssembly engine...' });
+    try {
+      importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js");
+      
+      pyodide = await loadPyodide({
+        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/"
+      });
+    } catch (netErr) {
+      initPromise = null;
+      throw new Error('Failed to load Pyodide WebAssembly from CDN. An active internet connection is required on initial load: ' + (netErr && netErr.message ? netErr.message : netErr));
+    }
 
     pyodide.setStdout({
       batched: (text) => {

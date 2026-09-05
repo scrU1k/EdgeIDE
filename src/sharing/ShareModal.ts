@@ -108,6 +108,10 @@ export class ShareModal {
     this.targetPeer = null;
   }
 
+  public isOpen(): boolean {
+    return !this.container.classList.contains('hidden');
+  }
+
   private handleP2PEvent(ev: TransferEvent): void {
     switch (ev.type) {
       case 'peer_discovered':
@@ -202,9 +206,17 @@ export class ShareModal {
   private async generateDeviceQr(): Promise<void> {
     const s = this.settingsStore.get();
     const files = this.getFilesToShare();
+    const accentColor = s.accentColor || '#6366f1';
 
     let payload: any;
+    let badgeType: 'file' | 'device' = 'device';
+    let fileName: string | undefined;
+    let label = 'DEVICE PAIR';
+
     if (files.length > 0) {
+      badgeType = 'file';
+      fileName = files.length === 1 ? files[0].name : undefined;
+      label = files.length === 1 ? files[0].name : `${files.length} FILES`;
       payload = {
         edgeide: true,
         type: 'file_transfer',
@@ -217,6 +229,8 @@ export class ShareModal {
         }))
       };
     } else {
+      badgeType = 'device';
+      label = 'DEVICE PAIR';
       payload = {
         edgeide: true,
         type: 'device_pair',
@@ -227,7 +241,12 @@ export class ShareModal {
     }
 
     try {
-      this.qrDataUrl = await QRService.generateQRDataUrl(JSON.stringify(payload), '#000000', '#ffffff');
+      this.qrDataUrl = await QRService.generateQRDataUrl(JSON.stringify(payload), {
+        accentColor,
+        badgeType,
+        fileName,
+        label
+      });
     } catch {
       // Fallback to device pairing QR if content exceeds single QR capacity
       const fallbackPayload = {
@@ -237,7 +256,11 @@ export class ShareModal {
         deviceName: s.deviceName,
         visibility: s.sharingVisibility
       };
-      this.qrDataUrl = await QRService.generateQRDataUrl(JSON.stringify(fallbackPayload), '#000000', '#ffffff');
+      this.qrDataUrl = await QRService.generateQRDataUrl(JSON.stringify(fallbackPayload), {
+        accentColor,
+        badgeType: 'device',
+        label: 'DEVICE PAIR'
+      });
     }
   }
 
@@ -537,18 +560,24 @@ export class ShareModal {
 
   private renderQrCodeView(): void {
     const s = this.settingsStore.get();
+    const files = this.getFilesToShare();
+    const isFileTransfer = files.length > 0;
+    const tabTitle = isFileTransfer 
+      ? `${files.length === 1 ? files[0].name : 'export-bundle'}.qr` 
+      : `${s.deviceName}.qr`;
+    const badgeLabel = isFileTransfer ? 'TRANSFER' : 'PAIRING';
 
     this.modal.innerHTML = `
       <div class="settings-modal-header flex items-center justify-between px-5 py-4 bg-[#0c0c0f] border-b border-white/5 shrink-0">
         <div class="flex items-center gap-2">
-          <button id="qrBackBtn" class="p-1 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-zinc-200">
+          <button id="qrBackBtn" class="p-1 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-zinc-200 transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
             </svg>
           </button>
-          <h2 class="font-bold text-sm text-zinc-100">Personal QR Code</h2>
+          <h2 class="font-bold text-sm text-zinc-100">${isFileTransfer ? 'File Transfer QR' : 'Personal QR Code'}</h2>
         </div>
-        <button id="qrCloseBtn" class="p-1.5 rounded-xl hover:bg-white/5 text-zinc-400 hover:text-zinc-200">
+        <button id="qrCloseBtn" class="p-1.5 rounded-xl hover:bg-white/5 text-zinc-400 hover:text-zinc-200 transition-colors">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -556,15 +585,43 @@ export class ShareModal {
       </div>
 
       <div class="settings-modal-body p-6 text-center space-y-4">
-        <div class="font-semibold text-zinc-200 text-sm">${s.deviceName}</div>
-        <div class="text-xs text-zinc-400 font-mono">${s.deviceId}</div>
-
-        <div class="p-4 bg-white rounded-2xl w-72 h-72 mx-auto shadow-2xl flex items-center justify-center">
-          ${this.qrDataUrl ? `<img src="${this.qrDataUrl}" alt="Device QR Code" class="w-full h-full object-contain">` : '<div class="text-zinc-900 font-medium text-xs">Generating...</div>'}
+        <div>
+          <div class="font-semibold text-zinc-200 text-sm">
+            ${isFileTransfer ? (files.length === 1 ? files[0].name : `${files.length} Files Selected`) : s.deviceName}
+          </div>
+          <div class="text-xs text-zinc-500 font-mono">
+            ${isFileTransfer ? `Ready for offline P2P transfer` : s.deviceId}
+          </div>
         </div>
 
-        <div class="text-[11px] text-zinc-400 max-w-[260px] mx-auto">
-          Scan this QR code from another device's EdgeIDE scanner for instant offline pairing.
+        <!-- IDE Code Card -->
+        <div class="p-4 bg-[#111117] border border-white/10 rounded-2xl max-w-[310px] mx-auto shadow-2xl space-y-3">
+          <!-- IDE Terminal Window Header -->
+          <div class="w-full flex items-center justify-between pb-2 border-b border-white/5">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-[#ef4444]"></span>
+              <span class="w-2 h-2 rounded-full bg-[#eab308]"></span>
+              <span class="w-2 h-2 rounded-full bg-[#22c55e]"></span>
+              <span class="text-[11px] font-mono text-zinc-400 ml-1.5 truncate max-w-[140px]">${tabTitle}</span>
+            </div>
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-white/5 font-semibold" style="color: var(--accent-color);">&lt;${badgeLabel}/&gt;</span>
+          </div>
+
+          <!-- QR Canvas View -->
+          <div class="p-2 bg-white rounded-xl aspect-square w-full shadow-inner flex items-center justify-center overflow-hidden">
+            ${this.qrDataUrl ? `<img src="${this.qrDataUrl}" alt="EdgeIDE QR" class="w-full h-full object-contain">` : '<div class="text-zinc-900 font-mono text-xs">Generating QR...</div>'}
+          </div>
+
+          <!-- Terminal Comment Footer -->
+          <div class="text-[10px] font-mono text-zinc-500">
+            // scan with EdgeIDE camera scanner
+          </div>
+        </div>
+
+        <div class="text-[11px] text-zinc-400 max-w-[270px] mx-auto">
+          ${isFileTransfer 
+            ? 'Point another device\'s EdgeIDE scanner at this QR code to transfer selected files directly.' 
+            : 'Point another device\'s EdgeIDE scanner at this QR code for instant offline pairing.'}
         </div>
       </div>
     `;
@@ -799,10 +856,13 @@ export class ShareModal {
       this.close();
       const firstReceived = transfer.files[0];
       if (firstReceived) {
-        const cleanName = firstReceived.name.replace(/^[/\\]+/, '');
-        const fileNode = this.vfs.getFileByPath('/' + cleanName);
-        if (fileNode && this.onOpenFile) {
-          this.onOpenFile(fileNode.id);
+        const parts = firstReceived.name.replace(/\\/g, '/').split('/').filter(p => p.trim().length > 0 && p !== '.' && p !== '..');
+        if (parts.length > 0) {
+          const cleanName = parts.join('/');
+          const fileNode = this.vfs.getFileByPath('/' + cleanName);
+          if (fileNode && this.onOpenFile) {
+            this.onOpenFile(fileNode.id);
+          }
         }
       }
     });

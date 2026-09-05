@@ -115,14 +115,14 @@ export class RuntimeManager {
         outputs: [{
           id: 'html_msg',
           type: 'system',
-          text: '🌐 Live Web Preview updated in Preview tab.',
+          text: 'Live Web Preview updated in Preview tab.',
           timestamp: Date.now()
         }],
         executionTimeMs: 1
       };
     }
 
-    // ⚡ Hardware-Aware Execution: If running on Desktop with native host Python available
+    // Hardware-Aware Execution: If running on Desktop with native host Python available
     if (activeFile.language === 'python') {
       const hostStatus = await NativeHostBridge.getStatus();
       if (hostStatus.available && hostStatus.hasPython) {
@@ -130,7 +130,7 @@ export class RuntimeManager {
         onOutput({
           id: 'host_py_banner_' + Date.now(),
           type: 'system',
-          text: `⚡ Executing on On-Device Python (${hostStatus.pythonVersion}) • ${hostStatus.osName} (${hostStatus.cpuCores} cores, ${hostStatus.totalMemoryMB}MB RAM)`,
+          text: `Executing on On-Device Python (${hostStatus.pythonVersion}) - ${hostStatus.osName} (${hostStatus.cpuCores} cores, ${hostStatus.totalMemoryMB}MB RAM)`,
           timestamp: Date.now()
         });
 
@@ -165,7 +165,7 @@ export class RuntimeManager {
           onOutput({
             id: 'host_py_fail_' + Date.now(),
             type: 'system',
-            text: `⚠️ Native host execution unavailable, running via Pyodide WASM: ${err.message}`,
+            text: `Native host execution unavailable, running via Pyodide WASM: ${err.message}`,
             timestamp: Date.now()
           });
           // Fall through to Pyodide WASM

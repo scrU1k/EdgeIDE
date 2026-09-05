@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { VirtualFileSystem } from './vfs';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { SettingsStore } from '../settings/settings-store';
 
 export interface ZipProgress {
   percent: number;
@@ -68,7 +69,8 @@ export class ZipService {
   public static async exportProjectZip(
     vfs: VirtualFileSystem,
     controller: ZipTaskController,
-    onProgress?: (p: ZipProgress) => void
+    onProgress?: (p: ZipProgress) => void,
+    settingsStore?: SettingsStore
   ): Promise<{ filename: string; path?: string; sizeBytes: number }> {
     const allFiles = vfs.getAllFiles();
     const totalFiles = allFiles.length;
@@ -85,6 +87,14 @@ export class ZipService {
     };
 
     onProgress?.(progress);
+
+    if (settingsStore) {
+      const safeSettings = { ...settingsStore.get() } as any;
+      delete safeSettings.deviceId;
+      delete safeSettings.trustedDevices;
+      delete safeSettings.sharingVisibility;
+      zip.file('.edgeide/settings.json', JSON.stringify(safeSettings, null, 2));
+    }
 
     // 1. Add all files with relative paths
     for (let i = 0; i < allFiles.length; i++) {
@@ -112,69 +122,89 @@ export class ZipService {
     progress.currentFile = 'Generating archive...';
     onProgress?.({ ...progress });
 
-    const zipBlob = await zip.generateAsync(
-      {
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 }
-      },
-      (metadata) => {
-        progress.percent = Math.min(95, 70 + Math.round(metadata.percent * 0.25));
-        onProgress?.({ ...progress });
-      }
-    );
-
-    await controller.checkWait();
-
-    // 3. Prepare file name
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `EdgeIDE_Backup_${timestamp}.zip`;
-
-    progress.status = 'saving';
-    progress.currentFile = filename;
-    progress.percent = 98;
-    onProgress?.({ ...progress });
-
     let savedPath: string | undefined;
+    let finalSizeBytes = 0;
 
-    // 4. Save to Native Documents/EdgeIDE or Browser Download
     try {
-      // Try Capacitor Filesystem in Documents/EdgeIDE
-      const base64Data = await blobToBase64(zipBlob);
-      const cleanBase64 = base64Data.split(',')[1] || base64Data;
+      // 1. Try Native Capacitor Filesystem (requires Base64)
+      // By generating base64 directly, we skip creating a massive Blob first.
+      const base64Data = await zip.generateAsync(
+        { type: 'base64', compression: 'DEFLATE', compressionOptions: { level: 6 }, comment: 'EdgeIDE_Export_Signature_v1' },
+        (metadata) => {
+          progress.percent = Math.min(95, 70 + Math.round(metadata.percent * 0.25));
+          onProgress?.({ ...progress });
+        }
+      );
+      
+      await controller.checkWait();
+      finalSizeBytes = Math.round((base64Data.length * 3) / 4);
 
-      // Ensure directory exists
+      // Prepare file name
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `EdgeIDE_Backup_${timestamp}.zip`;
+
+      progress.status = 'saving';
+      progress.currentFile = filename;
+      progress.percent = 98;
+      onProgress?.({ ...progress });
+
       try {
-        await Filesystem.mkdir({
-          path: 'EdgeIDE',
-          directory: Directory.Documents,
-          recursive: true
-        });
+        await Filesystem.mkdir({ path: 'EdgeIDE', directory: Directory.Documents, recursive: true });
       } catch {}
 
       const writeRes = await Filesystem.writeFile({
         path: `EdgeIDE/${filename}`,
-        data: cleanBase64,
+        data: base64Data,
         directory: Directory.Documents,
         recursive: true
       });
-
       savedPath = writeRes.uri || `Documents/EdgeIDE/${filename}`;
+
+      progress.status = 'completed';
+      progress.percent = 100;
+      progress.currentFile = filename;
+      onProgress?.({ ...progress });
+
+      return {
+        filename,
+        path: savedPath,
+        sizeBytes: finalSizeBytes
+      };
+
     } catch (nativeErr) {
-      // Browser fallback: trigger standard browser file download
+      // 2. Browser fallback: Generate Blob for browser download
+      const zipBlob = await zip.generateAsync(
+        { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 }, comment: 'EdgeIDE_Export_Signature_v1' },
+        (metadata) => {
+          progress.percent = Math.min(95, 70 + Math.round(metadata.percent * 0.25));
+          onProgress?.({ ...progress });
+        }
+      );
+      
+      await controller.checkWait();
+      finalSizeBytes = zipBlob.size;
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `EdgeIDE_Backup_${timestamp}.zip`;
+      
+      progress.status = 'saving';
+      progress.currentFile = filename;
+      progress.percent = 98;
+      onProgress?.({ ...progress });
+
       savedPath = triggerBrowserDownload(zipBlob, filename);
+
+      progress.status = 'completed';
+      progress.percent = 100;
+      progress.currentFile = filename;
+      onProgress?.({ ...progress });
+
+      return {
+        filename,
+        path: savedPath,
+        sizeBytes: finalSizeBytes
+      };
     }
-
-    progress.status = 'completed';
-    progress.percent = 100;
-    progress.currentFile = filename;
-    onProgress?.({ ...progress });
-
-    return {
-      filename,
-      path: savedPath,
-      sizeBytes: zipBlob.size
-    };
   }
 
   /**
@@ -184,10 +214,29 @@ export class ZipService {
     zipFile: File | Blob,
     vfs: VirtualFileSystem,
     controller: ZipTaskController,
-    onProgress?: (p: ZipProgress) => void
+    onProgress?: (p: ZipProgress) => void,
+    settingsStore?: SettingsStore
   ): Promise<{ importedCount: number }> {
     const zip = await JSZip.loadAsync(zipFile);
-    const entries = Object.values(zip.files).filter(entry => !entry.dir && !entry.name.startsWith('__MACOSX/'));
+    
+    // Attempt to load settings first
+    const settingsEntry = zip.file('.edgeide/settings.json');
+    if (settingsEntry && settingsStore) {
+      try {
+        const settingsJson = await settingsEntry.async('string');
+        const parsed = JSON.parse(settingsJson);
+        delete parsed.deviceId;
+        delete parsed.trustedDevices;
+        delete parsed.sharingVisibility;
+        settingsStore.set(parsed);
+      } catch (e) {
+        console.warn('Failed to parse settings from ZIP', e);
+      }
+    }
+
+    const entries = Object.values(zip.files).filter(entry => 
+      !entry.dir && !entry.name.startsWith('__MACOSX/') && entry.name !== '.edgeide/settings.json'
+    );
     const totalFiles = entries.length;
 
     const progress: ZipProgress = {
@@ -209,7 +258,10 @@ export class ZipService {
 
       const entry = entries[i];
       const content = await entry.async('string');
-      const parts = entry.name.split('/').filter(p => p.trim().length > 0);
+      // Fix Zip Slip: normalize backslashes, split, and strictly remove '.' and '..'
+      const parts = entry.name.replace(/\\/g, '/').split('/').filter(p => p.trim().length > 0 && p !== '.' && p !== '..');
+      
+      if (parts.length === 0) continue;
       
       let currentParentId: string | null = null;
       let currentPath = '';
@@ -254,16 +306,17 @@ export class ZipService {
 
     return { importedCount };
   }
+
+  public static async validateZipSignature(zipFile: File | Blob): Promise<boolean> {
+    try {
+      const zip = await JSZip.loadAsync(zipFile);
+      return (zip as any).comment === 'EdgeIDE_Export_Signature_v1' || Boolean(zip.file('.edgeide/settings.json'));
+    } catch {
+      return false;
+    }
+  }
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
 
 function triggerBrowserDownload(blob: Blob, filename: string): string {
   const url = URL.createObjectURL(blob);

@@ -1,4 +1,4 @@
-﻿import { VirtualFileSystem } from '../vfs/vfs';
+import { VirtualFileSystem } from '../vfs/vfs';
 
 export class SaveDraftModal {
   private container: HTMLElement;
@@ -94,6 +94,10 @@ export class SaveDraftModal {
   public close(): void {
     this.container.classList.add('hidden');
     this.currentDraftId = null;
+  }
+
+  public isOpen(): boolean {
+    return !this.container.classList.contains('hidden');
   }
 
   private attachEvents(): void {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Lightweight Zero-Cloud Cross-Device P2P Mesh
  * Uses MQTT over WebSocket (HiveMQ free public broker) as universal signaling relay.
  * Works out-of-the-box from browser, PWA, and Capacitor APK — no setup, no scanning required.
@@ -23,25 +23,104 @@ const MQTT_PUBLISH = 0x30;
 const MQTT_SUBSCRIBE = 0x82;
 const MQTT_PINGREQ = 0xc0;
 
-const MQTT_TOPIC = 'edgeide/p2p/v1';
+const MQTT_DISCOVERY_TOPIC = 'edgeide/p2p/v1/discovery';
 const MQTT_BROKER = 'wss://broker.hivemq.com:8884/mqtt';
 const PING_INTERVAL_MS = 20000;
 
+class MeshCrypto {
+  public myKeyPair?: CryptoKeyPair;
+  public myPublicKeyBase64?: string;
+  public sharedKeys: Map<string, CryptoKey> = new Map();
+
+  public async init(): Promise<void> {
+    if (typeof crypto === 'undefined' || !crypto.subtle) return;
+    try {
+      this.myKeyPair = await crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' },
+        false,
+        ['deriveKey']
+      );
+      const raw = await crypto.subtle.exportKey('raw', this.myKeyPair.publicKey);
+      this.myPublicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
+    } catch { /* unsupported */ }
+  }
+
+  public async deriveSharedKey(peerId: string, peerPublicKeyBase64: string): Promise<void> {
+    if (!crypto.subtle || !this.myKeyPair) return;
+    try {
+      const bin = atob(peerPublicKeyBase64);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      
+      const peerKey = await crypto.subtle.importKey(
+        'raw', buf, { name: 'ECDH', namedCurve: 'P-256' }, false, []
+      );
+      const sharedKey = await crypto.subtle.deriveKey(
+        { name: 'ECDH', public: peerKey },
+        this.myKeyPair.privateKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+      this.sharedKeys.set(peerId, sharedKey);
+    } catch { /* ignore */ }
+  }
+
+  public async encryptPayload(peerId: string, payload: string): Promise<string | null> {
+    const key = this.sharedKeys.get(peerId);
+    if (!key || !crypto.subtle) return null;
+    try {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encoded = new TextEncoder().encode(payload);
+      const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+      
+      const packed = new Uint8Array(iv.length + cipher.byteLength);
+      packed.set(iv, 0);
+      packed.set(new Uint8Array(cipher), iv.length);
+      
+      return btoa(String.fromCharCode(...packed));
+    } catch { return null; }
+  }
+
+  public async decryptPayload(peerId: string, encryptedBase64: string): Promise<string | null> {
+    const key = this.sharedKeys.get(peerId);
+    if (!key || !crypto.subtle) return null;
+    try {
+      const bin = atob(encryptedBase64);
+      const packed = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) packed[i] = bin.charCodeAt(i);
+      
+      const iv = packed.slice(0, 12);
+      const ciphertext = packed.slice(12);
+      
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+      return new TextDecoder().decode(decrypted);
+    } catch { return null; }
+  }
+}
+
 export class WebRTCMesh {
   private myDeviceId: string;
+  private myInboxTopic: string;
   private onMessageCallback: (msg: WebRTCMessage) => void;
   private mqttWs: WebSocket | null = null;
   private eventSource: EventSource | null = null;
+  private peerRelays: EventSource[] = [];
   private peerRelayUrls: Map<string, string> = new Map();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private isDestroyed: boolean = false;
   private broadcastChannel: BroadcastChannel;
+  private crypto: MeshCrypto;
+  private cryptoInitPromise: Promise<void>;
 
   constructor(myDeviceId: string, onMessage: (msg: WebRTCMessage) => void) {
     this.myDeviceId = myDeviceId;
+    this.myInboxTopic = `edgeide/p2p/v1/dev/${myDeviceId}`;
     this.onMessageCallback = onMessage;
     this.broadcastChannel = new BroadcastChannel('edge_ide_p2p_mesh_v1');
+    this.crypto = new MeshCrypto();
+    this.cryptoInitPromise = this.crypto.init();
 
     this.broadcastChannel.onmessage = (e) => {
       if (e.data && e.data.senderId !== this.myDeviceId) {
@@ -58,14 +137,7 @@ export class WebRTCMesh {
     try {
       this.eventSource = new EventSource('/api/p2p-relay/events');
       this.eventSource.onmessage = (e) => {
-        try {
-          const msg: WebRTCMessage = JSON.parse(e.data);
-          if (msg && msg.senderId !== this.myDeviceId) {
-            if (!msg.targetId || msg.targetId === this.myDeviceId) {
-              this.onMessageCallback(msg);
-            }
-          }
-        } catch { /* ignore */ }
+        this.processIncomingPayload(e.data);
       };
       this.eventSource.onerror = () => { /* silent */ };
     } catch { /* silent */ }
@@ -157,7 +229,9 @@ export class WebRTCMesh {
     const packetType = data[0] & 0xf0;
 
     if (packetType === MQTT_CONNACK) {
-      this.sendMqttSubscribe(MQTT_TOPIC);
+      this.sendMqttSubscribe(MQTT_DISCOVERY_TOPIC);
+      this.sendMqttSubscribe(this.myInboxTopic);
+
       this.pingTimer = setInterval(() => {
         if (this.mqttWs && this.mqttWs.readyState === WebSocket.OPEN) {
           this.mqttWs.send(new Uint8Array([MQTT_PINGREQ, 0x00]));
@@ -180,17 +254,37 @@ export class WebRTCMesh {
         const topic = decodeUtf8(data.slice(offset, offset + topicLen));
         offset += topicLen;
 
-        if (topic === MQTT_TOPIC) {
+        if (topic === MQTT_DISCOVERY_TOPIC || topic === this.myInboxTopic) {
           const payload = decodeUtf8(data.slice(offset));
-          const msg: WebRTCMessage = JSON.parse(payload);
-          if (msg && msg.senderId !== this.myDeviceId) {
-            if (!msg.targetId || msg.targetId === this.myDeviceId) {
-              this.onMessageCallback(msg);
-            }
-          }
+          this.processIncomingPayload(payload);
         }
       } catch { /* ignore */ }
     }
+  }
+
+  private async processIncomingPayload(payload: string): Promise<void> {
+    try {
+      let msg: WebRTCMessage = JSON.parse(payload);
+
+      if (msg.type === 'secure_envelope' && msg.encrypted && msg.senderId) {
+        const decrypted = await this.crypto.decryptPayload(msg.senderId, msg.encrypted);
+        if (decrypted) {
+          msg = JSON.parse(decrypted);
+        } else {
+          return;
+        }
+      }
+
+      if (msg.type === 'presence' && msg.publicKey && msg.senderId) {
+        await this.crypto.deriveSharedKey(msg.senderId, msg.publicKey);
+      }
+
+      if (msg && msg.senderId !== this.myDeviceId) {
+        if (!msg.targetId || msg.targetId === this.myDeviceId) {
+          this.onMessageCallback(msg);
+        }
+      }
+    } catch { /* ignore */ }
   }
 
   public registerPeerRelay(deviceId: string, relayBaseUrl: string): void {
@@ -203,30 +297,40 @@ export class WebRTCMesh {
       try {
         const remoteEventsUrl = `${relayBaseUrl}/api/p2p-relay/events`;
         const remoteSource = new EventSource(remoteEventsUrl);
+        this.peerRelays.push(remoteSource);
+        
         remoteSource.onopen = () => console.log(`[P2P] Direct relay SSE connected: ${remoteEventsUrl}`);
-        remoteSource.onmessage = (e) => {
-          try {
-            const msg: WebRTCMessage = JSON.parse(e.data);
-            if (msg && msg.senderId !== this.myDeviceId) {
-              if (!msg.targetId || msg.targetId === this.myDeviceId) {
-                this.onMessageCallback(msg);
-              }
-            }
-          } catch { /* ignore */ }
-        };
+        remoteSource.onmessage = (e) => this.processIncomingPayload(e.data);
         remoteSource.onerror = () => { /* silent */ };
       } catch { /* silent */ }
     }
   }
 
-  public broadcast(msg: WebRTCMessage): void {
+  public async broadcast(msg: WebRTCMessage): Promise<void> {
+    await this.cryptoInitPromise;
+    
     msg.senderId = this.myDeviceId;
-    const payload = JSON.stringify(msg);
+    
+    if (msg.type === 'presence' && this.crypto.myPublicKeyBase64) {
+      msg.publicKey = this.crypto.myPublicKeyBase64;
+    }
+    
+    let payload = JSON.stringify(msg);
 
-    // 1. BroadcastChannel — same device
+    if (msg.targetId && msg.type !== 'presence') {
+      const encrypted = await this.crypto.encryptPayload(msg.targetId, payload);
+      if (encrypted) {
+        payload = JSON.stringify({
+          type: 'secure_envelope',
+          senderId: this.myDeviceId,
+          targetId: msg.targetId,
+          encrypted
+        });
+      }
+    }
+
     try { this.broadcastChannel.postMessage(msg); } catch { /* silent */ }
 
-    // 2. Direct POST to peer relays (QR scan bootstrap)
     this.peerRelayUrls.forEach((relayBase) => {
       try {
         fetch(`${relayBase}/api/p2p-relay/send`, {
@@ -238,7 +342,6 @@ export class WebRTCMesh {
       } catch { /* silent */ }
     });
 
-    // 3. Local Vite relay (dev mode)
     try {
       fetch('/api/p2p-relay/send', {
         method: 'POST',
@@ -247,8 +350,10 @@ export class WebRTCMesh {
       }).catch(() => { /* silent */ });
     } catch { /* silent */ }
 
-    // 4. MQTT universal relay
-    try { this.sendMqttPublish(MQTT_TOPIC, payload); } catch { /* silent */ }
+    try {
+      const targetTopic = msg.targetId ? `edgeide/p2p/v1/dev/${msg.targetId}` : MQTT_DISCOVERY_TOPIC;
+      this.sendMqttPublish(targetTopic, payload);
+    } catch { /* silent */ }
   }
 
   public destroy(): void {
@@ -257,6 +362,7 @@ export class WebRTCMesh {
     if (this.pingTimer !== null) clearInterval(this.pingTimer);
     try { this.broadcastChannel.close(); } catch { /* silent */ }
     try { this.eventSource?.close(); } catch { /* silent */ }
+    this.peerRelays.forEach(r => { try { r.close(); } catch {} });
     try { this.mqttWs?.close(); } catch { /* silent */ }
   }
 }

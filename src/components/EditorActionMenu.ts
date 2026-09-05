@@ -18,10 +18,10 @@ export class EditorActionMenu {
   public onToggleSplit?: (orientation?: 'vertical' | 'horizontal') => void;
   public onRunSelection?: () => void;
 
-  private isMenuOpen: boolean = false;
-  private isFindBarOpen: boolean = false;
-  private isMultiCursorActive: boolean = false;
-  private isSplitActive: boolean = false;
+  public isMenuOpen: boolean = false;
+  public isFindBarOpen: boolean = false;
+  public isMultiCursorActive: boolean = false;
+  public isSplitActive: boolean = false;
 
   // Search state
   private findInput!: HTMLInputElement;

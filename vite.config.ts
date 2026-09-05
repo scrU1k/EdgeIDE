@@ -9,6 +9,24 @@ import crypto from 'crypto';
 // Cryptographically secure session token for native execution authorization
 const serverSessionToken = crypto.randomBytes(24).toString('hex');
 
+function isTrustedLocalOrigin(originHeader: string | undefined): boolean {
+  if (!originHeader) return true; // Direct same-origin / non-browser requests
+  try {
+    const parsed = new URL(originHeader);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+      return true;
+    }
+    // RFC1918 Private IPv4 ranges
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    // Mobile WebView / local schemas
+    if (parsed.protocol === 'capacitor:' || parsed.protocol === 'ionic:' || parsed.protocol === 'file:') return true;
+  } catch {}
+  return false;
+}
+
 function nativeExecutionPlugin(): Plugin {
   return {
     name: 'native-execution-bridge',
@@ -27,20 +45,12 @@ function nativeExecutionPlugin(): Plugin {
           // Validate Origin header if present
           const origin = req.headers['origin'];
           if (origin) {
-            const isLocal = origin.startsWith('http://localhost') || 
-                            origin.startsWith('http://127.0.0.1') ||
-                            origin.startsWith('https://localhost') ||
-                            origin.startsWith('http://192.168.') ||
-                            origin.startsWith('http://172.') ||
-                            origin.startsWith('http://10.');
-            if (!isLocal) {
+            if (!isTrustedLocalOrigin(origin)) {
               res.writeHead(403, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Forbidden: Origin is not trusted.' }));
               return;
             }
             res.setHeader('Access-Control-Allow-Origin', origin);
-          } else {
-            res.setHeader('Access-Control-Allow-Origin', '*');
           }
 
           res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -54,6 +64,15 @@ function nativeExecutionPlugin(): Plugin {
 
           // 0. Session Auth Token Handshake (only accessible same-site / local)
           if (req.url === '/api/native-exec/session' && req.method === 'GET') {
+            const remoteIp = req.socket?.remoteAddress;
+            const isLocalhost = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+            
+            if (!isLocalhost) {
+              res.writeHead(403, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Forbidden: Session token only accessible from localhost.' }));
+              return;
+            }
+
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ token: serverSessionToken }));
             return;
@@ -96,17 +115,53 @@ function nativeExecutionPlugin(): Plugin {
               try {
                 const { code } = JSON.parse(body);
                 const startTime = Date.now();
-                const tmpFile = path.join(os.tmpdir(), `edgeide_${Date.now()}_run.py`);
+                const uniqueId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+                const tmpFile = path.join(os.tmpdir(), `edgeide_${uniqueId}_run.py`);
                 fs.writeFileSync(tmpFile, code || '', 'utf-8');
 
                 const pyProc = spawn('python', ['-u', tmpFile]);
                 let stdout = '';
                 let stderr = '';
+                let isCompleted = false;
 
-                pyProc.stdout.on('data', d => { stdout += d.toString(); });
-                pyProc.stderr.on('data', d => { stderr += d.toString(); });
+                // Activity watchdog: resets whenever output is produced
+                const INACTIVITY_TIMEOUT_MS = 30000;
+                let watchdogTimer = setTimeout(onTimeout, INACTIVITY_TIMEOUT_MS);
+
+                function resetWatchdog() {
+                  if (isCompleted) return;
+                  clearTimeout(watchdogTimer);
+                  watchdogTimer = setTimeout(onTimeout, INACTIVITY_TIMEOUT_MS);
+                }
+
+                function onTimeout() {
+                  if (isCompleted) return;
+                  isCompleted = true;
+                  try { pyProc.kill('SIGKILL'); } catch {}
+                  try { fs.unlinkSync(tmpFile); } catch {}
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({
+                    success: false,
+                    stdout,
+                    stderr: (stderr ? stderr + '\n' : '') + 'Execution timed out (exceeded 30s inactivity limit).',
+                    exitCode: 124,
+                    executionTimeMs: Date.now() - startTime
+                  }));
+                }
+
+                pyProc.stdout.on('data', d => {
+                  stdout += d.toString();
+                  resetWatchdog();
+                });
+                pyProc.stderr.on('data', d => {
+                  stderr += d.toString();
+                  resetWatchdog();
+                });
 
                 pyProc.on('close', (code) => {
+                  if (isCompleted) return;
+                  isCompleted = true;
+                  clearTimeout(watchdogTimer);
                   try { fs.unlinkSync(tmpFile); } catch {}
                   const duration = Date.now() - startTime;
                   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -120,6 +175,9 @@ function nativeExecutionPlugin(): Plugin {
                 });
 
                 pyProc.on('error', (err) => {
+                  if (isCompleted) return;
+                  isCompleted = true;
+                  clearTimeout(watchdogTimer);
                   try { fs.unlinkSync(tmpFile); } catch {}
                   res.writeHead(200, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify({
@@ -151,16 +209,50 @@ function nativeExecutionPlugin(): Plugin {
 
                 const proc = spawn(shellCmd, shellArgs);
                 let output = '';
+                let isCompleted = false;
 
-                proc.stdout.on('data', d => { output += d.toString(); });
-                proc.stderr.on('data', d => { output += d.toString(); });
+                // 2-minute activity watchdog (resets on active pip download/build output)
+                const SHELL_TIMEOUT_MS = 120000;
+                let watchdogTimer = setTimeout(onTimeout, SHELL_TIMEOUT_MS);
+
+                function resetWatchdog() {
+                  if (isCompleted) return;
+                  clearTimeout(watchdogTimer);
+                  watchdogTimer = setTimeout(onTimeout, SHELL_TIMEOUT_MS);
+                }
+
+                function onTimeout() {
+                  if (isCompleted) return;
+                  isCompleted = true;
+                  try { proc.kill('SIGKILL'); } catch {}
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({
+                    output: (output ? output + '\n' : '') + 'Command timed out (exceeded inactivity limit).',
+                    exitCode: 124
+                  }));
+                }
+
+                proc.stdout.on('data', d => {
+                  output += d.toString();
+                  resetWatchdog();
+                });
+                proc.stderr.on('data', d => {
+                  output += d.toString();
+                  resetWatchdog();
+                });
 
                 proc.on('close', (exitCode) => {
+                  if (isCompleted) return;
+                  isCompleted = true;
+                  clearTimeout(watchdogTimer);
                   res.writeHead(200, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify({ output, exitCode }));
                 });
 
                 proc.on('error', (err) => {
+                  if (isCompleted) return;
+                  isCompleted = true;
+                  clearTimeout(watchdogTimer);
                   res.writeHead(200, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify({ output: `Shell error: ${err.message}`, exitCode: 1 }));
                 });
@@ -186,10 +278,18 @@ function p2pSignalingPlugin(): Plugin {
     name: 'p2p-signaling-relay',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
+        const origin = req.headers['origin'];
+        const isAllowedOrigin = isTrustedLocalOrigin(origin);
+
         // Handle CORS preflight from phone browser / Capacitor WebView
         if (req.method === 'OPTIONS' && (req.url?.startsWith('/api/p2p-relay'))) {
+          if (!isAllowedOrigin && origin) {
+            res.writeHead(403);
+            res.end();
+            return;
+          }
           res.writeHead(204, {
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': origin || '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type',
             'Access-Control-Max-Age': '86400'
@@ -198,12 +298,23 @@ function p2pSignalingPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith('/api/p2p-relay')) {
+          if (!isAllowedOrigin && origin) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Forbidden: Untrusted origin' }));
+            return;
+          }
+          if (origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+          }
+        }
+
         if (req.url === '/api/p2p-relay/events') {
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
+            ...(origin ? { 'Access-Control-Allow-Origin': origin } : {})
           });
           res.write('\n');
           clients.add(res);
@@ -231,11 +342,13 @@ function p2pSignalingPlugin(): Plugin {
               }
               res.writeHead(200, {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                ...(origin ? { 'Access-Control-Allow-Origin': origin } : {})
               });
               res.end(JSON.stringify({ ok: true }));
             } catch (e) {
-              res.writeHead(400, { 'Access-Control-Allow-Origin': '*' });
+              res.writeHead(400, {
+                ...(origin ? { 'Access-Control-Allow-Origin': origin } : {})
+              });
               res.end();
             }
           });

@@ -1,5 +1,6 @@
 import { VirtualFileSystem } from '../vfs/vfs';
 import { PythonRuntime } from '../runtimes/python-runtime';
+import { JavaScriptRuntime } from '../runtimes/js-runtime';
 import { GitAdapter } from './git-adapter';
 import { NativeHostBridge } from '../runtimes/native-host-bridge';
 
@@ -66,7 +67,7 @@ export class VirtualShell {
         return;
       }
 
-      write(`\x1b[90m⚡ Running on Host ${hostStatus.osName} Shell...\x1b[0m\r\n`);
+      write(`\x1b[90mRunning on Host ${hostStatus.osName} Shell...\x1b[0m\r\n`);
       try {
         const res = await NativeHostBridge.executeShell(hostCmd);
         if (res.output) {
@@ -381,19 +382,19 @@ export class VirtualShell {
           return;
         }
 
-        try {
-          const logs: string[] = [];
-          const customConsole = {
-            log: (...a: any[]) => logs.push(a.map(x => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(' ')),
-            error: (...a: any[]) => logs.push(`\x1b[31m${a.join(' ')}\x1b[0m`),
-            warn: (...a: any[]) => logs.push(`\x1b[33m${a.join(' ')}\x1b[0m`),
-          };
-          const fn = new Function('console', file.content);
-          fn(customConsole);
-          logs.forEach(l => write(l + '\r\n'));
-        } catch (e: any) {
-          write(`\x1b[31m${e.stack || e.message}\x1b[0m\r\n`);
-        }
+        write(`\x1b[90m[Running ${file.name} in Worker Sandbox...]\x1b[0m\r\n`);
+        const jsRuntime = new JavaScriptRuntime();
+        await jsRuntime.run(
+          file.content,
+          this.vfs,
+          (msg) => {
+            let textColor = '';
+            if (msg.type === 'error' || msg.type === 'stderr') textColor = '\x1b[31m';
+            else if (msg.type === 'system') textColor = '\x1b[33m';
+            else if (msg.type === 'result') textColor = '\x1b[32m';
+            write(`${textColor}${msg.text}\x1b[0m\r\n`);
+          }
+        );
         break;
       }
 

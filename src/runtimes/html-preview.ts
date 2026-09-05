@@ -378,7 +378,7 @@ export class HtmlPreviewBuilder {
 
     if (window.mermaid) {
       try {
-        mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+        mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'strict' });
       } catch(e) {}
     }
   </script>

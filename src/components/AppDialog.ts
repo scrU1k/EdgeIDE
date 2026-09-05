@@ -234,4 +234,22 @@ export class AppDialog {
       backdrop.addEventListener('click', () => cleanup(false));
     });
   }
+
+  public static isDialogOpen(): boolean {
+    return this.container !== null && !this.container.classList.contains('hidden') && this.container.innerHTML !== '';
+  }
+
+  public static closeCurrent(): boolean {
+    if (this.isDialogOpen()) {
+      const cancelBtn = this.container?.querySelector('#dialogCancelBtn') as HTMLElement;
+      if (cancelBtn) {
+        cancelBtn.click();
+        return true;
+      }
+      this.container?.classList.add('hidden');
+      if (this.container) this.container.innerHTML = '';
+      return true;
+    }
+    return false;
+  }
 }

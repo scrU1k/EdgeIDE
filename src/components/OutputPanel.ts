@@ -11,7 +11,7 @@ export class OutputPanel {
   private vfs: VirtualFileSystem;
   private pythonRuntime: PythonRuntime;
   private activeTab: OutputTab = 'console';
-  private isOpen: boolean = false;
+  public isOpen: boolean = false;
   private messages: ConsoleMessage[] = [];
   private iframeEl: HTMLIFrameElement | null = null;
   private consoleLogsContainer: HTMLElement | null = null;

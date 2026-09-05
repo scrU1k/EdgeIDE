@@ -55,6 +55,10 @@ export class SearchModal {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
   }
 
+  public isOpen(): boolean {
+    return !this.container.classList.contains('hidden');
+  }
+
   private render(): void {
     this.container.innerHTML = `
       <div class="search-modal-card bg-[#0c0c0f] border border-white/10 rounded-2xl w-full max-w-xl flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -144,7 +148,7 @@ export class SearchModal {
     });
   }
 
-  private performSearch(query: string): void {
+  private async performSearch(query: string): Promise<void> {
     const results: SearchResult[] = [];
     const allFiles = this.vfs.getAllFiles();
     const allNodes = this.vfs.getAllNodes();
@@ -178,8 +182,18 @@ export class SearchModal {
       }
 
       // 2. Match Code / Text contents across files
+      let fileCount = 0;
       for (const file of allFiles) {
         if (!file.content) continue;
+        
+        fileCount++;
+        // Yield to main thread every 5 files to keep UI responsive
+        if (fileCount % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        // Abort if the query has changed during yield
+        if (this.inputEl.value.trim() !== query) return;
+
         const lines = file.content.split('\n');
 
         for (let l = 0; l < lines.length; l++) {

@@ -17,7 +17,7 @@ export class SplitViewManager {
   private secondaryContentArea!: HTMLElement;
   private splitterHandle!: HTMLElement;
 
-  private isSplitActive: boolean = false;
+  public isSplitActive: boolean = false;
   private orientation: SplitOrientation = 'vertical';
   private splitRatio: number = 0.5; // 50% / 50%
   private isDraggingSplitter: boolean = false;
@@ -146,7 +146,10 @@ export class SplitViewManager {
       this.secondaryEditor.destroy();
       this.secondaryEditor = null;
     }
-    this.secondaryTerminal = null;
+    if (this.secondaryTerminal) {
+      this.secondaryTerminal.destroy();
+      this.secondaryTerminal = null;
+    }
     this.secondaryPreviewIframe = null;
     this.secondaryContentArea.innerHTML = '';
 
@@ -285,10 +288,10 @@ export class SplitViewManager {
   public async showSplitActionDialog(): Promise<void> {
     const isVertical = this.orientation === 'vertical';
 
-    const pane1Label = isVertical ? '⬅ Left Pane Content' : '⬆ Top Pane Content';
-    const pane2Label = isVertical ? '➡ Right Pane Content' : '⬇ Bottom Pane Content';
-    const swapLabel = isVertical ? '⇄ Swap Left & Right Panes' : '⇅ Swap Top & Bottom Panes';
-    const switchOrientLabel = isVertical ? '⇅ Switch to Horizontal Split (Stacked)' : '⇄ Switch to Vertical Split (Side by Side)';
+    const pane1Label = isVertical ? 'Left Pane Content' : 'Top Pane Content';
+    const pane2Label = isVertical ? 'Right Pane Content' : 'Bottom Pane Content';
+    const swapLabel = isVertical ? 'Swap Left & Right Panes' : 'Swap Top & Bottom Panes';
+    const switchOrientLabel = isVertical ? 'Switch to Horizontal Split (Stacked)' : 'Switch to Vertical Split (Side by Side)';
 
     const choice = await AppDialog.selectChoice({
       title: 'Split Workspace Layout',
@@ -297,31 +300,26 @@ export class SplitViewManager {
         {
           label: pane1Label,
           value: 'pane1_content',
-          icon: isVertical ? '⬅' : '⬆',
           description: `Change active file or view in ${isVertical ? 'left' : 'top'} pane`
         },
         {
           label: pane2Label,
           value: 'pane2_content',
-          icon: isVertical ? '➡' : '⬇',
           description: `Change active file or view in ${isVertical ? 'right' : 'bottom'} pane`
         },
         {
           label: swapLabel,
           value: 'swap_panes',
-          icon: isVertical ? '⇄' : '⇅',
           description: 'Invert the positions of both workspace panes'
         },
         {
           label: switchOrientLabel,
           value: 'toggle_orientation',
-          icon: isVertical ? '⇅' : '⇄',
           description: `Switch to ${isVertical ? 'stacked top/bottom' : 'side-by-side'} layout`
         },
         {
-          label: '✕ Close Split Screen',
+          label: 'Close Split Screen',
           value: 'close_split',
-          icon: '✕',
           description: 'Return to single full editor'
         }
       ]
@@ -352,19 +350,16 @@ export class SplitViewManager {
         {
           label: 'Select File...',
           value: 'file',
-          icon: '📄',
           description: 'Open a workspace code or markdown file'
         },
         {
           label: 'Terminal Console',
           value: 'terminal',
-          icon: '⚡',
           description: 'Interactive shell and Python environment'
         },
         {
           label: 'Live Web & Markdown Preview',
           value: 'preview',
-          icon: '🌐',
           description: 'Real-time HTML and KaTeX/Mermaid diagram preview'
         }
       ]

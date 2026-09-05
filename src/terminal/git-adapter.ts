@@ -1,6 +1,7 @@
 import * as git from 'isomorphic-git';
 import { Buffer } from 'buffer';
 import { VirtualFileSystem } from '../vfs/vfs';
+import { EdgeIDBStorage } from '../vfs/indexeddb-storage';
 
 // Make Buffer globally available for isomorphic-git
 if (typeof window !== 'undefined' && !(window as any).Buffer) {
@@ -16,6 +17,30 @@ class GitVirtualFS {
   constructor(vfs: VirtualFileSystem) {
     this.vfs = vfs;
     this.loadPersistedGit();
+    this.initIndexedDB();
+  }
+
+  private async initIndexedDB(): Promise<void> {
+    try {
+      const dirs = await EdgeIDBStorage.get<string[]>('edge_ide_git_dirs');
+      if (dirs) {
+        this.dirs = new Set(dirs);
+      }
+      const rawData = await EdgeIDBStorage.get<Record<string, string>>('edge_ide_git_objects');
+      if (rawData) {
+        for (const [key, base64] of Object.entries(rawData)) {
+          const binStr = atob(base64);
+          const len = binStr.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binStr.charCodeAt(i);
+          }
+          this.binaryFiles.set(key, bytes);
+        }
+      }
+    } catch (e) {
+      console.warn('[Git] IndexedDB load note:', e);
+    }
   }
 
   private normalizePath(p: string): string {
@@ -40,18 +65,19 @@ class GitVirtualFS {
         gitData[key] = btoa(binary);
       });
 
-      // Guard against quota exhaustion if git repository size exceeds safe threshold (2MB)
-      if (totalBytes > 2 * 1024 * 1024) {
-        console.warn('[Git] Git repository exceeds 2MB storage threshold. Retaining objects in runtime memory.');
-        return;
-      }
+      // 1. Asynchronous write to IndexedDB (no 2MB or 5MB ceiling)
+      EdgeIDBStorage.set('edge_ide_git_objects', gitData);
+      EdgeIDBStorage.set('edge_ide_git_dirs', Array.from(this.dirs));
 
-      localStorage.setItem('edge_ide_git_objects', JSON.stringify(gitData));
-      localStorage.setItem('edge_ide_git_dirs', JSON.stringify(Array.from(this.dirs)));
-    } catch (e: any) {
-      if (e?.name === 'QuotaExceededError' || e?.code === 22) {
-        console.warn('[Git] Storage quota limit reached during git persistence.');
+      // 2. Synchronous cache in localStorage if within safe limits
+      if (totalBytes <= 2 * 1024 * 1024) {
+        try {
+          localStorage.setItem('edge_ide_git_objects', JSON.stringify(gitData));
+          localStorage.setItem('edge_ide_git_dirs', JSON.stringify(Array.from(this.dirs)));
+        } catch {}
       }
+    } catch (e: any) {
+      console.warn('[Git] Storage persistence warning:', e);
     }
   }
 

@@ -6,6 +6,17 @@ self.onmessage = async (e) => {
   const { code } = e.data;
   const startTime = performance.now();
 
+  // Sandbox lockdown: Prevent exfiltration and origin storage access
+  const restrictedKeys = ['indexedDB', 'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'caches', 'Worker', 'SharedWorker', 'importScripts'];
+  for (const key of restrictedKeys) {
+    try {
+      Object.defineProperty(self, key, {
+        get() { throw new Error(`Security Exception: Access to ${key} is blocked in this sandbox.`); },
+        configurable: false
+      });
+    } catch (err) {}
+  }
+
   function formatArg(arg) {
     if (arg === null) return 'null';
     if (arg === undefined) return 'undefined';
@@ -92,7 +103,7 @@ export class JavaScriptRuntime implements LanguageRuntime {
       onOutput(msg);
     };
 
-    pushMsg('system', '⚡ Executing JavaScript in isolated sandbox...');
+    pushMsg('system', 'Executing JavaScript in isolated sandbox...');
 
     return new Promise<ExecutionResult>((resolve) => {
       const blob = new Blob([JS_WORKER_SCRIPT], { type: 'application/javascript' });

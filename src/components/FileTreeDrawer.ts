@@ -11,7 +11,7 @@ export class FileTreeDrawer {
   private contextMenuPopup: HTMLElement;
   private vfs: VirtualFileSystem;
   private settingsStore: SettingsStore;
-  private isOpen: boolean = false;
+  public isOpen: boolean = false;
   private onSelectFileCallback: (fileId: string) => void;
   private onOpenSettings: () => void;
   public onShareFile?: (fileId: string) => void;
@@ -131,8 +131,11 @@ export class FileTreeDrawer {
       const deltaX = touchEndX - this.touchStartX;
       const deltaY = Math.abs(touchEndY - this.touchStartY);
 
+      const screenWidth = window.innerWidth || document.documentElement.clientWidth || 360;
+      const leftSwipeArea = screenWidth * 0.25; // 25% of screen width
+
       if (deltaY < 80) {
-        if (!this.isOpen && this.touchStartX < 35 && deltaX > 60) {
+        if (!this.isOpen && this.touchStartX <= leftSwipeArea && deltaX > 45) {
           this.open();
         } else if (this.isOpen && deltaX < -60) {
           this.close();
@@ -323,21 +326,31 @@ export class FileTreeDrawer {
     if (!this.isResizeInitialized) {
       this.isResizeInitialized = true;
 
-      window.addEventListener('touchmove', (e) => {
-        if (this.isResizingWidth) {
-          doResize(e.touches[0].clientX);
-        }
-      }, { passive: true });
+      const onTouchMove = (e: TouchEvent) => {
+        if (this.isResizingWidth) doResize(e.touches[0].clientX);
+      };
+      
+      const onMouseMove = (e: MouseEvent) => {
+        if (this.isResizingWidth) doResize(e.clientX);
+      };
 
+      window.addEventListener('touchmove', onTouchMove, { passive: true });
       window.addEventListener('touchend', stopResize, { passive: true });
-
-      window.addEventListener('mousemove', (e) => {
-        if (this.isResizingWidth) {
-          doResize(e.clientX);
-        }
-      });
-
+      window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', stopResize);
+
+      (this as any)._cleanupResizeListeners = () => {
+        window.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('touchend', stopResize);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', stopResize);
+      };
+    }
+  }
+
+  public destroy(): void {
+    if ((this as any)._cleanupResizeListeners) {
+      (this as any)._cleanupResizeListeners();
     }
   }
 

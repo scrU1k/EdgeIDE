@@ -12,6 +12,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { SaveDraftModal } from './components/SaveDraftModal';
 import { NativeStorageBridge } from './vfs/native-storage';
 import { PlatformBridge } from './native/platform';
+import { App } from '@capacitor/app';
+import { AppDialog } from './components/AppDialog';
 import { EditorActionMenu } from './components/EditorActionMenu';
 import { P2PEngine } from './sharing/p2p-engine';
 import { ShareModal } from './sharing/ShareModal';
@@ -362,6 +364,86 @@ class MobileApp {
           }
         }
       }
+    });
+
+    // Android Hardware & Gesture Back Button Handler
+    App.addListener('backButton', () => {
+      // 1. Dismiss active AppDialog if open
+      if (AppDialog.isDialogOpen()) {
+        AppDialog.closeCurrent();
+        return;
+      }
+
+      // 2. Close QR Scanner if open
+      if (this.settingsModal?.qrScannerModal?.isOpen()) {
+        this.settingsModal.qrScannerModal.close();
+        return;
+      }
+
+      // 3. Close Syntax Guides if open
+      if (this.settingsModal?.syntaxGuidesModal?.isOpen()) {
+        this.settingsModal.syntaxGuidesModal.close();
+        return;
+      }
+
+      // 4. Close Settings Modal if open
+      if (this.settingsModal?.isOpen()) {
+        this.settingsModal.close();
+        return;
+      }
+
+      // 5. Close Search Modal if open
+      if (this.searchModal?.isOpen()) {
+        this.searchModal.close();
+        return;
+      }
+
+      // 6. Close Share Modal if open
+      if (this.shareModal?.isOpen()) {
+        this.shareModal.close();
+        return;
+      }
+
+      // 7. Close Save Draft Modal if open
+      if (this.saveDraftModal?.isOpen()) {
+        this.saveDraftModal.close();
+        return;
+      }
+
+      // 8. Close Editor Action Menu dropdown, find bar, or multi-cursor bar if active
+      if (this.editorActionMenu?.isMenuOpen) {
+        this.editorActionMenu.closeMenu();
+        return;
+      }
+      if (this.editorActionMenu?.isFindBarOpen) {
+        this.editorActionMenu.closeFindBar();
+        return;
+      }
+      if (this.editorActionMenu?.isMultiCursorActive) {
+        this.editorActionMenu.exitMultiCursorMode();
+        return;
+      }
+
+      // 9. Close File Tree Drawer if open
+      if (this.drawer?.isOpen) {
+        this.drawer.close();
+        return;
+      }
+
+      // 10. Close Output Panel if open
+      if (this.outputPanel?.isOpen) {
+        this.outputPanel.close();
+        return;
+      }
+
+      // 11. Close Secondary Split Pane if split is active
+      if (this.splitManager?.isSplitActive) {
+        this.splitManager.closeSplit();
+        return;
+      }
+
+      // 12. If no overlays are open, exit app gracefully
+      App.exitApp();
     });
   }
 }
