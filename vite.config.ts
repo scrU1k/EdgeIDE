@@ -362,6 +362,7 @@ function p2pSignalingPlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: './',
   plugins: [
     tailwindcss(),
     p2pSignalingPlugin(),
