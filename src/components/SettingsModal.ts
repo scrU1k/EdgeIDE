@@ -245,6 +245,12 @@ export class SettingsModal {
             ? this.renderDataTabHtml()
             : this.renderShareTabHtml(s)}
       </div>
+
+      <!-- Settings Modal Footer -->
+      <div class="px-5 py-2.5 bg-[#09090c] border-t border-white/5 flex items-center justify-between text-[11px] font-mono text-zinc-500 shrink-0 select-none">
+        <span>EdgeIDE</span>
+        <span>GPL v3</span>
+      </div>
     `;
 
     this.attachEvents();

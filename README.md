@@ -1,6 +1,8 @@
 # EdgeIDE
 ### A Touch-Optimized Code Studio for Mobile and Desktop
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 EdgeIDE is a fast, versatile code editor and development environment built to work consistently across devices—including phones, tablets, laptops, and desktops. Whether writing Python on the go, building web applications, testing algorithms, or transferring project files between devices, EdgeIDE provides a distraction-free coding experience with zero configuration required.
 
 ---
@@ -82,3 +84,9 @@ EdgeIDE runs across all major operating systems:
 1. **Open EdgeIDE** in a supported browser or launch the installed application.
 2. **Create or Open a File**: Use the file explorer to structure projects, or press `Ctrl+T` / `+` to open an instant scratchpad.
 3. **Write and Execute**: Write code with syntax highlighting and auto-completion, then run the active file (`Ctrl+Enter`) to view terminal output or live web previews.
+
+---
+
+## License
+
+This project is free and open-source software licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE).
