@@ -78,7 +78,7 @@ export const FORMAT_CATEGORIES: FormatCategory[] = [
       { ext: '.kt / .kts', name: 'Kotlin', engine: 'Syntax Highlighter & Android Snippets', badge: 'Syntax' },
       { ext: '.ps1', name: 'PowerShell', engine: 'Script Syntax & Command Highlighter', badge: 'Syntax' },
       { ext: '.r / .rmd', name: 'R / RMarkdown', engine: 'Data & Statistics Syntax Highlighter', badge: 'Syntax' },
-      { ext: '.cpp / .c', name: 'C / C++', engine: 'Clang/WASI Syntax Highlighter', badge: 'Syntax' },
+      { ext: '.cpp / .c', name: 'C / C++', engine: 'Native GCC / G++ & Clang Compiler', badge: 'Runnable' },
       { ext: '.rs', name: 'Rust', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' },
       { ext: '.java', name: 'Java', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' },
       { ext: '.php', name: 'PHP', engine: 'Syntax Highlighter & Snippets', badge: 'Syntax' }

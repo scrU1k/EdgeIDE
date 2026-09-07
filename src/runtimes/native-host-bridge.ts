@@ -2,6 +2,9 @@ export interface NativeHostStatus {
   available: boolean;
   hasPython: boolean;
   pythonVersion?: string;
+  hasCpp?: boolean;
+  cppCompiler?: string;
+  cppVersion?: string;
   platform?: string;
   osName?: string;
   cpuCores?: number;
@@ -50,6 +53,9 @@ export class NativeHostBridge {
           available: true,
           hasPython: data.hasPython,
           pythonVersion: data.pythonVersion,
+          hasCpp: data.hasCpp,
+          cppCompiler: data.cppCompiler,
+          cppVersion: data.cppVersion,
           platform: data.platform,
           osName: data.osName,
           cpuCores: data.cpuCores,
@@ -63,7 +69,8 @@ export class NativeHostBridge {
 
     this.cachedStatus = {
       available: false,
-      hasPython: false
+      hasPython: false,
+      hasCpp: false
     };
     return this.cachedStatus;
   }
@@ -86,11 +93,39 @@ export class NativeHostBridge {
     const res = await fetch('/api/native-exec/run', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ code })
+      body: JSON.stringify({ code, language: 'python' })
     });
 
     if (!res.ok) {
       throw new Error(`Native execution failed: ${res.statusText}`);
+    }
+
+    return await res.json();
+  }
+
+  public static async executeCpp(code: string, language: 'cpp' | 'c' = 'cpp', filename?: string): Promise<{
+    success: boolean;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    executionTimeMs: number;
+  }> {
+    const token = await this.getSessionToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['X-EdgeIDE-Auth'] = token;
+    }
+
+    const res = await fetch('/api/native-exec/run', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ code, language, filename })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Native C/C++ compilation failed: ${res.statusText}`);
     }
 
     return await res.json();

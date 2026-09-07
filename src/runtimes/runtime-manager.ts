@@ -1,6 +1,7 @@
 import { LanguageRuntime, ConsoleMessage, ExecutionResult, RuntimeStatus } from './types';
 import { PythonRuntime } from './python-runtime';
 import { JavaScriptRuntime } from './js-runtime';
+import { CppRuntime } from './cpp-runtime';
 import { NativeHostBridge } from './native-host-bridge';
 import { VirtualFileSystem } from '../vfs/vfs';
 import { SupportedLanguage } from '../vfs/types';
@@ -13,7 +14,8 @@ export class RuntimeManager {
   constructor() {
     this.runtimes = [
       new PythonRuntime(),
-      new JavaScriptRuntime()
+      new JavaScriptRuntime(),
+      new CppRuntime()
     ];
   }
 

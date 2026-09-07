@@ -78,21 +78,43 @@ function nativeExecutionPlugin(): Plugin {
             return;
           }
 
-          // 1. Status Probe: Checks system Python and OS environment
+          // 1. Status Probe: Checks system Python, C/C++ compilers, and OS environment
           if (req.url === '/api/native-exec/status' && req.method === 'GET') {
-            exec('python --version', (err, stdout, stderr) => {
-              const pyVer = (stdout || stderr || '').trim();
-              const hasPython = !err && pyVer.length > 0;
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                available: true,
-                hasPython,
-                pythonVersion: hasPython ? pyVer : 'Not found in PATH',
-                platform: process.platform,
-                osName: process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux',
-                cpuCores: os.cpus().length,
-                totalMemoryMB: Math.round(os.totalmem() / (1024 * 1024))
-              }));
+            exec('python --version', (errPy, stdoutPy, stderrPy) => {
+              const pyVer = (stdoutPy || stderrPy || '').trim();
+              const hasPython = !errPy && pyVer.length > 0;
+
+              exec('g++ --version', (errCpp, stdoutCpp) => {
+                const hasCpp = !errCpp && (stdoutCpp || '').length > 0;
+                const cppCompiler = 'g++';
+                const cppVersion = (stdoutCpp || '').split('\n')[0].trim();
+
+                const sendStatus = (hasCompiler: boolean, comp: string, ver: string) => {
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({
+                    available: true,
+                    hasPython,
+                    pythonVersion: hasPython ? pyVer : 'Not found in PATH',
+                    hasCpp: hasCompiler,
+                    cppCompiler: hasCompiler ? comp : 'Not found in PATH',
+                    cppVersion: hasCompiler ? ver : 'Not found in PATH',
+                    platform: process.platform,
+                    osName: process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux',
+                    cpuCores: os.cpus().length,
+                    totalMemoryMB: Math.round(os.totalmem() / (1024 * 1024))
+                  }));
+                };
+
+                if (!hasCpp) {
+                  exec('gcc --version', (errC, stdoutC) => {
+                    const hasC = !errC && (stdoutC || '').length > 0;
+                    sendStatus(hasC, 'gcc', (stdoutC || '').split('\n')[0].trim());
+                  });
+                  return;
+                }
+
+                sendStatus(true, cppCompiler, cppVersion);
+              });
             });
             return;
           }
@@ -107,15 +129,127 @@ function nativeExecutionPlugin(): Plugin {
             }
           }
 
-          // 2. Run Python Code on Host System
+          // 2. Run Code on Host System (Python, C++, C)
           if (req.url === '/api/native-exec/run' && req.method === 'POST') {
             let body = '';
             req.on('data', chunk => { body += chunk; });
             req.on('end', () => {
               try {
-                const { code } = JSON.parse(body);
+                const { code, language = 'python', filename } = JSON.parse(body);
                 const startTime = Date.now();
                 const uniqueId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+
+                // A. C / C++ Compilation & Native Execution
+                if (language === 'cpp' || language === 'c') {
+                  const isCpp = language !== 'c';
+                  const ext = isCpp ? 'cpp' : 'c';
+                  const srcFile = path.join(os.tmpdir(), `edgeide_${uniqueId}.${ext}`);
+                  const exeFile = path.join(os.tmpdir(), `edgeide_${uniqueId}_bin` + (process.platform === 'win32' ? '.exe' : ''));
+                  fs.writeFileSync(srcFile, code || '', 'utf-8');
+
+                  const compiler = isCpp ? 'g++' : 'gcc';
+                  const stdFlag = isCpp ? '-std=c++14' : '-std=c11';
+                  const compileCmd = `${compiler} -O2 ${stdFlag} "${srcFile}" -o "${exeFile}"`;
+
+                  exec(compileCmd, (compileErr, compileStdout, compileStderr) => {
+                    if (compileErr) {
+                      try { fs.unlinkSync(srcFile); } catch {}
+                      try { fs.unlinkSync(exeFile); } catch {}
+
+                      // Clean up internal temp paths so user sees clean filename
+                      const displayName = filename || `main.${ext}`;
+                      const cleanStderr = (compileStderr || compileStdout || 'Compilation failed.').replace(
+                        new RegExp(srcFile.replace(/\\/g, '\\\\'), 'g'),
+                        displayName
+                      );
+
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify({
+                        success: false,
+                        stdout: compileStdout || '',
+                        stderr: cleanStderr,
+                        exitCode: compileErr.code || 1,
+                        executionTimeMs: Date.now() - startTime
+                      }));
+                      return;
+                    }
+
+                    // Execution phase
+                    const proc = spawn(exeFile);
+                    let stdout = '';
+                    let stderr = '';
+                    let isCompleted = false;
+
+                    const INACTIVITY_TIMEOUT_MS = 30000;
+                    let watchdogTimer = setTimeout(onTimeout, INACTIVITY_TIMEOUT_MS);
+
+                    function resetWatchdog() {
+                      if (isCompleted) return;
+                      clearTimeout(watchdogTimer);
+                      watchdogTimer = setTimeout(onTimeout, INACTIVITY_TIMEOUT_MS);
+                    }
+
+                    function onTimeout() {
+                      if (isCompleted) return;
+                      isCompleted = true;
+                      try { proc.kill('SIGKILL'); } catch {}
+                      try { fs.unlinkSync(srcFile); } catch {}
+                      try { fs.unlinkSync(exeFile); } catch {}
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify({
+                        success: false,
+                        stdout,
+                        stderr: (stderr ? stderr + '\n' : '') + 'Execution timed out (exceeded 30s inactivity limit).',
+                        exitCode: 124,
+                        executionTimeMs: Date.now() - startTime
+                      }));
+                    }
+
+                    proc.stdout.on('data', d => {
+                      stdout += d.toString();
+                      resetWatchdog();
+                    });
+                    proc.stderr.on('data', d => {
+                      stderr += d.toString();
+                      resetWatchdog();
+                    });
+
+                    proc.on('close', (code) => {
+                      if (isCompleted) return;
+                      isCompleted = true;
+                      clearTimeout(watchdogTimer);
+                      try { fs.unlinkSync(srcFile); } catch {}
+                      try { fs.unlinkSync(exeFile); } catch {}
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify({
+                        success: code === 0,
+                        stdout,
+                        stderr,
+                        exitCode: code,
+                        executionTimeMs: Date.now() - startTime
+                      }));
+                    });
+
+                    proc.on('error', (err) => {
+                      if (isCompleted) return;
+                      isCompleted = true;
+                      clearTimeout(watchdogTimer);
+                      try { fs.unlinkSync(srcFile); } catch {}
+                      try { fs.unlinkSync(exeFile); } catch {}
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify({
+                        success: false,
+                        stdout,
+                        stderr: err.message,
+                        exitCode: 1,
+                        executionTimeMs: Date.now() - startTime
+                      }));
+                    });
+                  });
+                  return;
+                }
+
+                // B. Python Execution
                 const tmpFile = path.join(os.tmpdir(), `edgeide_${uniqueId}_run.py`);
                 fs.writeFileSync(tmpFile, code || '', 'utf-8');
 
