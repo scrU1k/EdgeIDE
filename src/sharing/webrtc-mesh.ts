@@ -262,6 +262,8 @@ export class WebRTCMesh {
     }
   }
 
+  private pinnedKeys: Map<string, string> = new Map();
+
   private async processIncomingPayload(payload: string): Promise<void> {
     try {
       let msg: WebRTCMessage = JSON.parse(payload);
@@ -276,7 +278,17 @@ export class WebRTCMesh {
       }
 
       if (msg.type === 'presence' && msg.publicKey && msg.senderId) {
-        await this.crypto.deriveSharedKey(msg.senderId, msg.publicKey);
+        // Finding 3: Key pinning — if we've seen this peer before and the key has changed,
+        // warn and drop the key update to prevent broker-level key substitution attacks.
+        const existingPinnedKey = this.pinnedKeys.get(msg.senderId);
+        if (existingPinnedKey && existingPinnedKey !== msg.publicKey) {
+          console.warn(`[P2P] Key mismatch for peer ${msg.senderId} — pinned key differs from announced key. Ignoring new key.`);
+        } else {
+          if (!existingPinnedKey) {
+            this.pinnedKeys.set(msg.senderId, msg.publicKey);
+          }
+          await this.crypto.deriveSharedKey(msg.senderId, msg.publicKey);
+        }
       }
 
       if (msg && msg.senderId !== this.myDeviceId) {
@@ -326,6 +338,12 @@ export class WebRTCMesh {
           targetId: msg.targetId,
           encrypted
         });
+      } else {
+        // Finding 3: Refuse to transmit plaintext over the relay when a target is set
+        // and encryption fails (no shared key established yet). This prevents silently
+        // sending workspace content unencrypted over a public MQTT/SSE broker.
+        console.warn('[P2P] Encryption unavailable for targeted message — transmission blocked to protect content.');
+        return;
       }
     }
 

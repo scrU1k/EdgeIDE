@@ -310,6 +310,9 @@ export class VirtualFileSystem {
   private pathIndex: Map<string, string> = new Map();
   private childrenIndex: Map<string | null, Set<string>> = new Map();
   private nameIndex: Map<string, string> = new Map();
+  // Finding 5: Track whether the user has made any edits before IDB hydration completes.
+  private hasUserEditedSinceStartup: boolean = false;
+  private isHydrated: boolean = false;
 
   constructor() {
     this.state = this.loadFromStorage();
@@ -327,15 +330,22 @@ export class VirtualFileSystem {
     try {
       const idbState = await EdgeIDBStorage.get<ProjectState>(STORAGE_KEY);
       if (idbState && idbState.files && idbState.activeFileId) {
-        this.state = idbState;
-        this.rebuildIndices();
-        this.notify();
+        // Finding 5: If the user edited during the async IDB load window, keep the
+        // newer in-memory state and immediately persist it to IDB instead of overwriting.
+        if (this.hasUserEditedSinceStartup) {
+          await EdgeIDBStorage.set(STORAGE_KEY, this.state);
+        } else {
+          this.state = idbState;
+          this.rebuildIndices();
+          this.notify();
+        }
       } else if (this.state) {
-        // Migrate initial / existing localStorage state into IndexedDB
         await EdgeIDBStorage.set(STORAGE_KEY, this.state);
       }
     } catch (err) {
       console.warn('[VFS] IndexedDB initialization note:', err);
+    } finally {
+      this.isHydrated = true;
     }
   }
 
@@ -392,6 +402,7 @@ export class VirtualFileSystem {
   }
 
   public save(immediate: boolean = true, rebuild: boolean = true): void {
+    this.hasUserEditedSinceStartup = true;
     if (rebuild) {
       this.rebuildIndices();
     }
@@ -443,6 +454,10 @@ export class VirtualFileSystem {
 
   public getState(): ProjectState {
     return this.state;
+  }
+
+  public getIsHydrated(): boolean {
+    return this.isHydrated;
   }
 
   public getActiveFile(): VirtualNode | null {

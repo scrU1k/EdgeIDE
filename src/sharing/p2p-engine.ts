@@ -458,19 +458,60 @@ export class P2PEngine {
     }
   }
 
+  // Finding 4: Hard limits to prevent memory exhaustion attacks via malformed chunk streams.
+  private static readonly MAX_TOTAL_CHUNKS = 5000;
+  private static readonly MAX_CHUNK_SIZE_BYTES = 262144; // 256 KB per chunk
+  private static readonly MAX_TOTAL_TRANSFER_BYTES = 104857600; // 100 MB
+
   private handleIncomingChunk(data: any): void {
     const pending = this.pendingChunks.get(data.transferId);
     if (!pending) return;
 
-    pending.chunks[data.chunkIndex] = data.chunkData;
-    pending.total = data.totalChunks;
+    // Finding 4: Validate chunk index range before assigning to prevent sparse array exhaustion.
+    const chunkIndex = Number(data.chunkIndex);
+    const totalChunks = Number(data.totalChunks);
+    const chunkData: string = String(data.chunkData || '');
+
+    if (
+      !Number.isFinite(chunkIndex) ||
+      !Number.isFinite(totalChunks) ||
+      chunkIndex < 0 ||
+      chunkIndex >= totalChunks ||
+      totalChunks > P2PEngine.MAX_TOTAL_CHUNKS
+    ) {
+      console.warn('[P2P] Rejected chunk: invalid index or total chunk count exceeds limit.');
+      this.mesh.broadcast({ type: 'transfer_cancel', transferId: data.transferId });
+      this.activeTransfer = null;
+      this.pendingChunks.delete(data.transferId);
+      return;
+    }
+
+    if (chunkData.length > P2PEngine.MAX_CHUNK_SIZE_BYTES) {
+      console.warn('[P2P] Rejected chunk: chunk size exceeds 256 KB limit.');
+      this.mesh.broadcast({ type: 'transfer_cancel', transferId: data.transferId });
+      this.activeTransfer = null;
+      this.pendingChunks.delete(data.transferId);
+      return;
+    }
+
+    pending.chunks[chunkIndex] = chunkData;
+    pending.total = totalChunks;
 
     const receivedCount = pending.chunks.filter(Boolean).length;
-    const approxBytes = pending.chunks.join('').length;
+    const approxBytes = pending.chunks.reduce((sum, c) => sum + (c ? c.length : 0), 0);
+
+    // Finding 4: Abort if cumulative bytes exceed the declared total or the hard cap.
+    if (approxBytes > P2PEngine.MAX_TOTAL_TRANSFER_BYTES) {
+      console.warn('[P2P] Transfer aborted: total data exceeds 100 MB limit.');
+      this.mesh.broadcast({ type: 'transfer_cancel', transferId: data.transferId });
+      this.activeTransfer = null;
+      this.pendingChunks.delete(data.transferId);
+      return;
+    }
 
     if (this.activeTransfer) {
       this.activeTransfer.transferredBytes = approxBytes;
-      this.activeTransfer.progressPercent = Math.min(100, Math.round((receivedCount / data.totalChunks) * 100));
+      this.activeTransfer.progressPercent = Math.min(100, Math.round((receivedCount / totalChunks) * 100));
 
       const elapsedSec = (Date.now() - this.activeTransfer.startTime) / 1000;
       this.activeTransfer.speedMBps = elapsedSec > 0 ? Number(((approxBytes / 1024 / 1024) / elapsedSec).toFixed(2)) : 0;

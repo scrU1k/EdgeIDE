@@ -62,6 +62,10 @@ export class ZipTaskController {
 }
 
 export class ZipService {
+  // Finding 6: Decompression limits to defend against ZIP bombs and memory exhaustion.
+  public static readonly MAX_ZIP_ENTRIES = 1000;
+  public static readonly MAX_SINGLE_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+  public static readonly MAX_TOTAL_UNCOMPRESSED_SIZE = 60 * 1024 * 1024; // 60 MB
   /**
    * Export all VFS files and folders as a ZIP archive.
    * Saves to Documents/EdgeIDE/ in native environment, or triggers browser download.
@@ -219,16 +223,14 @@ export class ZipService {
   ): Promise<{ importedCount: number }> {
     const zip = await JSZip.loadAsync(zipFile);
     
-    // Attempt to load settings first
+    // Attempt to load settings first with schema validation (Finding 8)
     const settingsEntry = zip.file('.edgeide/settings.json');
     if (settingsEntry && settingsStore) {
       try {
         const settingsJson = await settingsEntry.async('string');
         const parsed = JSON.parse(settingsJson);
-        delete parsed.deviceId;
-        delete parsed.trustedDevices;
-        delete parsed.sharingVisibility;
-        settingsStore.set(parsed);
+        const cleanSettings = SettingsStore.sanitize(parsed);
+        settingsStore.set(cleanSettings);
       } catch (e) {
         console.warn('Failed to parse settings from ZIP', e);
       }
@@ -237,6 +239,12 @@ export class ZipService {
     const entries = Object.values(zip.files).filter(entry => 
       !entry.dir && !entry.name.startsWith('__MACOSX/') && entry.name !== '.edgeide/settings.json'
     );
+
+    // Finding 6: Reject archives exceeding entry limit
+    if (entries.length > ZipService.MAX_ZIP_ENTRIES) {
+      throw new Error(`ZIP import rejected: Archive contains ${entries.length} files (exceeds limit of ${ZipService.MAX_ZIP_ENTRIES}).`);
+    }
+
     const totalFiles = entries.length;
 
     const progress: ZipProgress = {
@@ -252,12 +260,23 @@ export class ZipService {
     onProgress?.(progress);
 
     let importedCount = 0;
+    let cumulativeDecompressedBytes = 0;
 
     for (let i = 0; i < entries.length; i++) {
       await controller.checkWait();
 
       const entry = entries[i];
       const content = await entry.async('string');
+
+      // Finding 6: Reject archives with files exceeding single-file or total decompressed limits (ZIP bomb defense)
+      if (content.length > ZipService.MAX_SINGLE_FILE_SIZE) {
+        throw new Error(`ZIP import rejected: File "${entry.name}" exceeds maximum allowed file size of 15MB.`);
+      }
+      cumulativeDecompressedBytes += content.length;
+      if (cumulativeDecompressedBytes > ZipService.MAX_TOTAL_UNCOMPRESSED_SIZE) {
+        throw new Error(`ZIP import rejected: Total uncompressed size exceeds maximum allowed limit of 60MB.`);
+      }
+
       // Fix Zip Slip: normalize backslashes, split, and strictly remove '.' and '..'
       const parts = entry.name.replace(/\\/g, '/').split('/').filter(p => p.trim().length > 0 && p !== '.' && p !== '..');
       

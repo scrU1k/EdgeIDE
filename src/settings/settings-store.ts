@@ -151,6 +151,41 @@ function getDefaultDeviceName(): string {
   return 'EdgeIDE Device';
 }
 
+export function validateAndSanitizeSettings(raw: any): Partial<AppSettings> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const clean: Partial<AppSettings> = {};
+
+  if (raw.themeMode === 'dark' || raw.themeMode === 'light') {
+    clean.themeMode = raw.themeMode;
+  }
+
+  if (raw.viewMode === 'mobile' || raw.viewMode === 'desktop') {
+    clean.viewMode = raw.viewMode;
+  }
+
+  if (typeof raw.fontSize === 'number' && Number.isFinite(raw.fontSize) && raw.fontSize >= 8 && raw.fontSize <= 36) {
+    clean.fontSize = raw.fontSize;
+  }
+
+  const ALLOWED_CODE_THEMES = ['oled-dark', 'midnight', 'dracula', 'monokai', 'light-clean'];
+  if (typeof raw.codeTheme === 'string' && ALLOWED_CODE_THEMES.includes(raw.codeTheme)) {
+    clean.codeTheme = raw.codeTheme as any;
+  }
+
+  if (typeof raw.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.accentColor)) {
+    clean.accentColor = raw.accentColor;
+  }
+
+  if (typeof raw.fontFamily === 'string' && raw.fontFamily.length <= 100 && !/[<>{}]/.test(raw.fontFamily)) {
+    clean.fontFamily = raw.fontFamily;
+  }
+
+  if (typeof raw.wordWrap === 'boolean') clean.wordWrap = raw.wordWrap;
+  if (typeof raw.showLineNumbers === 'boolean') clean.showLineNumbers = raw.showLineNumbers;
+
+  return clean;
+}
+
 export class SettingsStore {
   private settings: AppSettings;
   private listeners: Array<(s: AppSettings) => void> = [];
@@ -187,6 +222,10 @@ export class SettingsStore {
       trustedDevices: [],
       dismissedTrustedDeviceIds: []
     };
+  }
+
+  public static sanitize(raw: any): Partial<AppSettings> {
+    return validateAndSanitizeSettings(raw);
   }
 
   public get(): AppSettings {

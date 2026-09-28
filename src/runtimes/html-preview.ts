@@ -2,7 +2,7 @@ import { VirtualFileSystem } from '../vfs/vfs';
 import { VirtualNode } from '../vfs/types';
 
 export class HtmlPreviewBuilder {
-  public static buildBundle(vfs: VirtualFileSystem, targetFileId?: string): string {
+  public static buildBundle(vfs: VirtualFileSystem, targetFileId?: string, allowNetwork: boolean = false): string {
     const activeFile = vfs.getActiveFile();
     let htmlFile: VirtualNode | undefined;
 
@@ -98,11 +98,18 @@ export class HtmlPreviewBuilder {
       return _match;
     });
 
-    // Insert interceptor into <head> or at beginning
+    // Finding 7: Inject Content Security Policy to restrict outbound network requests by default.
+    // connect-src 'none' blocks fetch, XMLHttpRequest, WebSocket, and EventSource.
+    const cspMeta = allowNetwork
+      ? `<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https: data: blob:; form-action 'none';">`
+      : `<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; form-action 'none';">`;
+
+    // Insert CSP and interceptor into <head> or at beginning
+    const injection = `\n${cspMeta}\n${consoleInterceptorScript}\n`;
     if (htmlContent.includes('<head>')) {
-      htmlContent = htmlContent.replace('<head>', '<head>\n' + consoleInterceptorScript);
+      htmlContent = htmlContent.replace('<head>', '<head>' + injection);
     } else {
-      htmlContent = consoleInterceptorScript + htmlContent;
+      htmlContent = injection + htmlContent;
     }
 
     return htmlContent;
@@ -210,6 +217,7 @@ export class HtmlPreviewBuilder {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${this.escapeHtml(title)}</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src data: https: blob:; connect-src 'none'; form-action 'none';">
 
   <!-- KaTeX Math Rendering -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" crossorigin="anonymous">

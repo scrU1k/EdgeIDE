@@ -17,13 +17,28 @@ for (const key of restrictedKeys) {
   } catch (err) {}
 }
 
-// Proxy fetch to only allow Pyodide and PyPI downloads, preventing data exfiltration
+// Proxy fetch to only allow Pyodide and PyPI downloads using strict hostname matching.
+// Finding 2: startsWith was vulnerable to subdomains like 'cdn.jsdelivr.net.attacker.example'.
 const originalFetch = self.fetch;
 Object.defineProperty(self, 'fetch', {
   value: async function(url, options) {
     const urlStr = String(url);
-    if (!urlStr.startsWith('https://cdn.jsdelivr.net') && !urlStr.startsWith('https://pypi.org') && !urlStr.startsWith('https://files.pythonhosted.org')) {
-      throw new Error('Security Exception: fetch is restricted to PyPI and jsdelivr in this sandbox.');
+    let allowed = false;
+    try {
+      const parsed = new URL(urlStr);
+      const h = parsed.hostname.toLowerCase();
+      // Strict hostname equality — no prefix tricks possible.
+      const allowedHosts = ['cdn.jsdelivr.net', 'pypi.org', 'files.pythonhosted.org'];
+      if (allowedHosts.includes(h)) {
+        // Only allow safe read-only methods to prevent outbound data exfiltration.
+        const method = ((options && options.method) || 'GET').toUpperCase();
+        if (method === 'GET' || method === 'HEAD') {
+          allowed = true;
+        }
+      }
+    } catch {}
+    if (!allowed) {
+      throw new Error('Security Exception: fetch is restricted to PyPI and jsdelivr CDN (GET/HEAD only) in this sandbox.');
     }
     return originalFetch.apply(this, arguments);
   },

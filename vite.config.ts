@@ -6,22 +6,36 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
-// Cryptographically secure session token for native execution authorization
+// Cryptographically secure session token for native execution authorization.
+// This token is injected into the served index.html page via transformIndexHtml
+// and is never exposed through an unauthenticated API endpoint.
 const serverSessionToken = crypto.randomBytes(24).toString('hex');
 
+// The exact origin the Vite dev server is serving from (set once the server starts).
+let serverOrigin: string | null = null;
+
+function isTrustedNativeOrigin(originHeader: string | undefined): boolean {
+  if (!originHeader) return true; // Direct non-browser requests (curl, Node fetch)
+  // Exact match: must be the same protocol + hostname + port as our Vite server.
+  if (serverOrigin && originHeader === serverOrigin) return true;
+  // Mobile WebView / Capacitor / Ionic local schemas (no port distinction needed).
+  try {
+    const parsed = new URL(originHeader);
+    if (parsed.protocol === 'capacitor:' || parsed.protocol === 'ionic:' || parsed.protocol === 'file:') return true;
+  } catch {}
+  return false;
+}
+
+// Broader trusted check for the P2P relay (allows LAN IPs, not just the exact port).
 function isTrustedLocalOrigin(originHeader: string | undefined): boolean {
-  if (!originHeader) return true; // Direct same-origin / non-browser requests
+  if (!originHeader) return true;
   try {
     const parsed = new URL(originHeader);
     const host = parsed.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
-      return true;
-    }
-    // RFC1918 Private IPv4 ranges
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
     if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
-    // Mobile WebView / local schemas
     if (parsed.protocol === 'capacitor:' || parsed.protocol === 'ionic:' || parsed.protocol === 'file:') return true;
   } catch {}
   return false;
@@ -31,6 +45,14 @@ function nativeExecutionPlugin(): Plugin {
   return {
     name: 'native-execution-bridge',
     configureServer(server) {
+      // Capture the exact origin once the server starts listening.
+      server.httpServer?.once('listening', () => {
+        const addr = server.httpServer?.address();
+        if (addr && typeof addr === 'object') {
+          serverOrigin = `http://localhost:${addr.port}`;
+        }
+      });
+
       server.middlewares.use((req, res, next) => {
         // Security gate for all native execution endpoints
         if (req.url?.startsWith('/api/native-exec')) {
@@ -38,18 +60,19 @@ function nativeExecutionPlugin(): Plugin {
           // Reject cross-site requests from untrusted external websites
           if (secFetchSite === 'cross-site') {
             res.writeHead(403, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Forbidden: Cross-site request rejected for security.' }));
+            res.end(JSON.stringify({ error: 'Forbidden: Cross-site request rejected.' }));
             return;
           }
 
-          // Validate Origin header if present
+          // Validate Origin header using strict exact-origin check (Finding 1).
           const origin = req.headers['origin'];
           if (origin) {
-            if (!isTrustedLocalOrigin(origin)) {
+            if (!isTrustedNativeOrigin(origin)) {
               res.writeHead(403, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Forbidden: Origin is not trusted.' }));
               return;
             }
+            // Reflect only our exact server origin, not an arbitrary localhost port.
             res.setHeader('Access-Control-Allow-Origin', origin);
           }
 
@@ -62,21 +85,10 @@ function nativeExecutionPlugin(): Plugin {
             return;
           }
 
-          // 0. Session Auth Token Handshake (only accessible same-site / local)
-          if (req.url === '/api/native-exec/session' && req.method === 'GET') {
-            const remoteIp = req.socket?.remoteAddress;
-            const isLocalhost = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
-            
-            if (!isLocalhost) {
-              res.writeHead(403, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Forbidden: Session token only accessible from localhost.' }));
-              return;
-            }
-
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ token: serverSessionToken }));
-            return;
-          }
+          // The /session endpoint is intentionally removed (Finding 1).
+          // The session token is now injected directly into index.html via transformIndexHtml.
+          // This means only pages served from our exact origin can read the token —
+          // other localhost ports cannot, because Same-Origin Policy blocks cross-origin reads.
 
           // 1. Status Probe: Checks system Python, C/C++ compilers, and OS environment
           if (req.url === '/api/native-exec/status' && req.method === 'GET') {
@@ -401,6 +413,16 @@ function nativeExecutionPlugin(): Plugin {
 
         next();
       });
+    },
+
+    // Inject session token into the served page at build time (dev) so the client
+    // reads it from window.__EDGEIDE_SESSION_TOKEN__ — inaccessible to other origins
+    // due to the browser Same-Origin Policy (Finding 1).
+    transformIndexHtml(html) {
+      return html.replace(
+        '<head>',
+        `<head>\n    <script>window.__EDGEIDE_SESSION_TOKEN__=${JSON.stringify(serverSessionToken)};</script>`
+      );
     }
   };
 }

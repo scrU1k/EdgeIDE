@@ -19,6 +19,7 @@ export class OutputPanel {
   private terminalTab: TerminalTab | null = null;
   private executionTimeMs: number | null = null;
   private currentHeightVh: number = 45;
+  private previewAllowNetwork: boolean = false;
 
   constructor(parent: HTMLElement, vfs: VirtualFileSystem, pythonRuntime?: PythonRuntime) {
     this.vfs = vfs;
@@ -174,7 +175,7 @@ export class OutputPanel {
 
   public refreshPreview(): void {
     if (!this.iframeEl) return;
-    const htmlBundle = HtmlPreviewBuilder.buildBundle(this.vfs);
+    const htmlBundle = HtmlPreviewBuilder.buildBundle(this.vfs, undefined, this.previewAllowNetwork);
     this.iframeEl.srcdoc = htmlBundle;
   }
 
@@ -189,6 +190,9 @@ export class OutputPanel {
 
     const clearBtn = this.element.querySelector('#clearConsoleBtn') as HTMLElement;
     const refreshBtn = this.element.querySelector('#refreshPreviewBtn') as HTMLElement;
+    const toggleNetBtn = this.element.querySelector('#togglePreviewNetBtn') as HTMLElement;
+    const netDot = this.element.querySelector('#netDotIndicator') as HTMLElement;
+    const netText = this.element.querySelector('#netLabelText') as HTMLElement;
 
     // Reset styles
     [consoleBtn, terminalBtn, previewBtn].forEach(b => {
@@ -205,6 +209,7 @@ export class OutputPanel {
     previewContent?.classList.add('hidden');
     clearBtn?.classList.add('hidden');
     refreshBtn?.classList.add('hidden');
+    toggleNetBtn?.classList.add('hidden');
 
     if (this.activeTab === 'console') {
       if (consoleBtn) {
@@ -234,6 +239,18 @@ export class OutputPanel {
       }
       previewContent?.classList.remove('hidden');
       refreshBtn?.classList.remove('hidden');
+      toggleNetBtn?.classList.remove('hidden');
+      if (netDot && netText) {
+        if (this.previewAllowNetwork) {
+          netDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+          netText.textContent = 'Net: On';
+          toggleNetBtn.title = 'Preview Network: Allowed (Click to Block)';
+        } else {
+          netDot.className = 'w-1.5 h-1.5 rounded-full bg-red-400';
+          netText.textContent = 'Net: Off';
+          toggleNetBtn.title = 'Preview Network: Blocked (Click to Allow)';
+        }
+      }
       this.refreshPreview();
     }
   }
@@ -266,6 +283,12 @@ export class OutputPanel {
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
             </svg>
+          </button>
+
+          <!-- Toggle Network Access for Preview -->
+          <button id="togglePreviewNetBtn" title="Preview Network: Blocked (Click to Allow)" class="px-2 py-1 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 text-[11px] font-mono transition-all hidden flex items-center gap-1 border border-white/10">
+            <span class="w-1.5 h-1.5 rounded-full bg-red-400" id="netDotIndicator"></span>
+            <span id="netLabelText">Net: Off</span>
           </button>
 
           <!-- Refresh Preview Button -->
@@ -380,6 +403,12 @@ export class OutputPanel {
     });
 
     refreshPreviewBtn?.addEventListener('click', () => this.refreshPreview());
+
+    const togglePreviewNetBtn = this.element.querySelector('#togglePreviewNetBtn');
+    togglePreviewNetBtn?.addEventListener('click', () => {
+      this.previewAllowNetwork = !this.previewAllowNetwork;
+      this.updateTabVisibility();
+    });
 
     copyOutputBtn?.addEventListener('click', async () => {
       let textToCopy = '';
