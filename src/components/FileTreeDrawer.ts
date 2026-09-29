@@ -235,10 +235,10 @@ export class FileTreeDrawer {
           <span class="action-btn-text truncate">+ Folder</span>
         </button>
         <!-- Upload button (icon only) -->
-        <button id="drawerUploadBtn" title="Upload / Import file from device" class="p-2 bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-200 rounded-xl text-xs font-medium transition-all shrink-0">
+        <label id="drawerUploadBtn" title="Upload / Import file from device" class="p-2 bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-200 rounded-xl text-xs font-medium transition-all shrink-0 cursor-pointer flex items-center justify-center">
           ${Icons.upload}
-        </button>
-        <input type="file" id="drawerFileInput" multiple class="hidden" />
+          <input type="file" id="drawerFileInput" multiple class="hidden" />
+        </label>
       </div>
 
       <!-- File & Folder Tree -->
@@ -493,12 +493,7 @@ export class FileTreeDrawer {
     });
 
     // Upload file
-    const uploadBtn = this.drawer.querySelector('#drawerUploadBtn');
     const fileInput = this.drawer.querySelector('#drawerFileInput') as HTMLInputElement;
-
-    uploadBtn?.addEventListener('click', () => {
-      fileInput?.click();
-    });
 
     fileInput?.addEventListener('change', async () => {
       if (!fileInput.files || fileInput.files.length === 0) return;
