@@ -166,7 +166,7 @@ export class NotebookEditor {
           <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
           </svg>
-          <span>+ Code</span>
+          <span>Code</span>
         </button>
 
         <!-- Add Markdown Cell -->
@@ -174,11 +174,11 @@ export class NotebookEditor {
           <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
           </svg>
-          <span>+ Text</span>
+          <span>Text</span>
         </button>
       </div>
 
-      <div class="flex items-center gap-2 shrink-0">
+      <div class="flex items-center gap-2 shrink-0 pr-14">
         <!-- Clear All Outputs -->
         <button id="nbClearOutputsBtn" title="Clear all cell outputs" class="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-zinc-200 text-xs border border-white/10 transition-all">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

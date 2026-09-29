@@ -45,6 +45,8 @@ Object.defineProperty(self, 'fetch', {
   configurable: false,
   writable: false
 });
+
+async function getPyodide() {
   if (pyodide) return pyodide;
   if (initPromise) return initPromise;
 

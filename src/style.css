@@ -447,6 +447,10 @@ body.desktop-mode.desktop-drawer-open #app {
   overflow-x: hidden !important;
 }
 
+body.desktop-mode.desktop-drawer-open .output-panel {
+  left: var(--drawer-width, 280px) !important;
+}
+
 body.desktop-mode .drawer-backdrop {
   display: none !important;
 }
