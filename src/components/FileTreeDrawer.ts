@@ -31,7 +31,6 @@ export class FileTreeDrawer {
   private isDragging: boolean = false;
   private draggedNodeId: string | null = null;
   private currentDropTargetId: string | null = null;
-  private currentDropPosition: 'before' | 'after' | 'inside' = 'before';
 
   constructor(
     parent: HTMLElement, 
@@ -245,6 +244,11 @@ export class FileTreeDrawer {
       <!-- File & Folder Tree -->
       <div class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5" id="treeContainer">
         ${this.renderTreeLevel(null, 0)}
+        <!-- Root Drop Target (to move files out of folders back to root) -->
+        <div id="rootDropZone" title="Drop here to move to root directory (/)" class="py-3 my-2 border-2 border-dashed border-white/5 hover:border-white/10 rounded-xl transition-all flex items-center justify-center gap-1.5 text-[11px] font-mono text-zinc-500 hover:text-zinc-300">
+          <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+          <span>Drop to Root (/)</span>
+        </div>
       </div>
 
       <!-- Bottom Controls Bar (Theme / Settings / View Mode / Scan QR) -->
@@ -362,7 +366,7 @@ export class FileTreeDrawer {
     return children.map(node => {
       if (node.isFolder) {
         return `
-          <div class="tree-node-wrapper select-none" data-id="${node.id}" data-is-folder="true">
+          <div class="tree-node-wrapper select-none cursor-grab active:cursor-grabbing" data-id="${node.id}" data-is-folder="true" draggable="true">
             <div data-id="${node.id}" class="folder-item tree-item group flex items-center justify-between py-1.5 px-2 rounded-xl cursor-pointer hover:bg-white/5 transition-all text-zinc-300 text-xs" style="padding-left: ${indentPx}px;">
               <div class="flex items-center gap-2 min-w-0 pointer-events-none">
                 <svg class="w-3.5 h-3.5 text-zinc-500 transition-transform duration-150 ${node.isExpanded ? 'rotate-90 text-zinc-300' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -395,7 +399,7 @@ export class FileTreeDrawer {
       } else {
         const isActive = node.id === activeFile?.id;
         return `
-          <div class="tree-node-wrapper select-none" data-id="${node.id}" data-is-folder="false">
+          <div class="tree-node-wrapper select-none cursor-grab active:cursor-grabbing" data-id="${node.id}" data-is-folder="false" draggable="true">
             <div data-id="${node.id}" 
               style="${isActive ? 'color: var(--accent-color); background: var(--accent-color-subtle);' : ''}"
               class="file-item tree-item group flex items-center justify-between py-1.5 px-2 rounded-xl cursor-pointer transition-all ${
@@ -522,7 +526,7 @@ export class FileTreeDrawer {
   }
 
   private setupTreeTouchAndDrag(): void {
-    const treeContainer = this.drawer.querySelector('#treeContainer');
+    const treeContainer = this.drawer.querySelector('#treeContainer') as HTMLElement;
     if (!treeContainer) return;
 
     let touchTargetNodeId: string | null = null;
@@ -530,7 +534,104 @@ export class FileTreeDrawer {
     let touchStartY = 0;
     let didMove = false;
 
-    treeContainer.addEventListener('touchstart', (e: any) => {
+    // 1. Desktop HTML5 Drag & Drop
+    treeContainer.addEventListener('dragstart', (e: DragEvent) => {
+      const target = (e.target as HTMLElement)?.closest('.tree-node-wrapper') as HTMLElement;
+      if (!target) return;
+      const nodeId = target.getAttribute('data-id');
+      if (!nodeId) return;
+
+      this.isDragging = true;
+      this.draggedNodeId = nodeId;
+      if (e.dataTransfer) {
+        e.dataTransfer.setData('text/plain', nodeId);
+        e.dataTransfer.effectAllowed = 'move';
+      }
+      target.classList.add('opacity-40');
+    });
+
+    treeContainer.addEventListener('dragover', (e: DragEvent) => {
+      e.preventDefault();
+      if (!this.draggedNodeId) return;
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+
+      // Clear previous indicators
+      treeContainer.querySelectorAll('.drop-target-active, .drop-root-active').forEach(el => {
+        el.classList.remove('drop-target-active', 'drop-root-active');
+      });
+
+      const elementUnder = document.elementFromPoint(e.clientX, e.clientY);
+      const rootZone = elementUnder?.closest('#rootDropZone');
+      if (rootZone) {
+        rootZone.classList.add('drop-root-active');
+        this.currentDropTargetId = 'root';
+        return;
+      }
+
+      const folderItem = elementUnder?.closest('.tree-node-wrapper[data-is-folder="true"]') as HTMLElement;
+      if (folderItem && folderItem.getAttribute('data-id') !== this.draggedNodeId) {
+        folderItem.classList.add('drop-target-active');
+        this.currentDropTargetId = folderItem.getAttribute('data-id');
+        return;
+      }
+
+      // If hovering over tree container empty space, highlight root
+      if (elementUnder === treeContainer) {
+        const rz = treeContainer.querySelector('#rootDropZone');
+        rz?.classList.add('drop-root-active');
+        this.currentDropTargetId = 'root';
+      }
+    });
+
+    treeContainer.addEventListener('dragleave', (e: DragEvent) => {
+      const related = e.relatedTarget as HTMLElement;
+      if (!related || !treeContainer.contains(related)) {
+        treeContainer.querySelectorAll('.drop-target-active, .drop-root-active').forEach(el => {
+          el.classList.remove('drop-target-active', 'drop-root-active');
+        });
+        this.currentDropTargetId = null;
+      }
+    });
+
+    treeContainer.addEventListener('dragend', () => {
+      treeContainer.querySelectorAll('.opacity-40, .drop-target-active, .drop-root-active').forEach(el => {
+        el.classList.remove('opacity-40', 'drop-target-active', 'drop-root-active');
+      });
+      this.isDragging = false;
+      this.draggedNodeId = null;
+      this.currentDropTargetId = null;
+    });
+
+    treeContainer.addEventListener('drop', (e: DragEvent) => {
+      e.preventDefault();
+      const sourceId = e.dataTransfer?.getData('text/plain') || this.draggedNodeId;
+      treeContainer.querySelectorAll('.opacity-40, .drop-target-active, .drop-root-active').forEach(el => {
+        el.classList.remove('opacity-40', 'drop-target-active', 'drop-root-active');
+      });
+
+      if (!sourceId) return;
+
+      const elementUnder = document.elementFromPoint(e.clientX, e.clientY);
+      const rootZone = elementUnder?.closest('#rootDropZone');
+      const folderItem = elementUnder?.closest('.tree-node-wrapper[data-is-folder="true"]') as HTMLElement;
+
+      if (rootZone || (!folderItem && elementUnder === treeContainer)) {
+        this.vfs.moveNodeToFolder(sourceId, null);
+      } else if (folderItem && folderItem.getAttribute('data-id') !== sourceId) {
+        const destId = folderItem.getAttribute('data-id');
+        if (destId) {
+          this.vfs.moveNodeToFolder(sourceId, destId);
+        }
+      }
+
+      this.isDragging = false;
+      this.draggedNodeId = null;
+      this.currentDropTargetId = null;
+      this.render();
+    });
+
+    // 2. Mobile Touch Long-Press & Drag
+    treeContainer.addEventListener('touchstart', (e: TouchEvent) => {
       if (this.isResizingWidth) return;
       const target = e.target as HTMLElement;
       const actionBtn = target.closest('[data-action]');
@@ -557,42 +658,36 @@ export class FileTreeDrawer {
       }, 380);
     }, { passive: true });
 
-    treeContainer.addEventListener('touchmove', (e: any) => {
+    treeContainer.addEventListener('touchmove', (e: TouchEvent) => {
       if (this.isResizingWidth) return;
+      const currentX = e.touches[0].clientX;
       const currentY = e.touches[0].clientY;
-      if (Math.abs(currentY - touchStartY) > 10) {
+
+      if (Math.abs(currentY - touchStartY) > 10 || Math.abs(currentX - touchStartX) > 10) {
         didMove = true;
         clearTimeout(this.longPressTimer);
       }
 
-      // Drag reordering if in dragging state
+      // If user is performing touch drag
       if (this.isDragging && this.draggedNodeId) {
         e.preventDefault();
-        const elementUnderTouch = document.elementFromPoint(e.touches[0].clientX, currentY);
-        const targetTreeItem = elementUnderTouch?.closest('.tree-node-wrapper') as HTMLElement;
+        const elementUnderTouch = document.elementFromPoint(currentX, currentY);
         
-        // Remove previous indicators
-        treeContainer.querySelectorAll('.drop-indicator-top, .drop-indicator-bottom, .drop-indicator-inside').forEach(el => {
-          el.classList.remove('drop-indicator-top', 'drop-indicator-bottom', 'drop-indicator-inside');
+        treeContainer.querySelectorAll('.drop-target-active, .drop-root-active').forEach(el => {
+          el.classList.remove('drop-target-active', 'drop-root-active');
         });
 
-        if (targetTreeItem && targetTreeItem.getAttribute('data-id') !== this.draggedNodeId) {
-          const targetId = targetTreeItem.getAttribute('data-id')!;
-          const isFolder = targetTreeItem.getAttribute('data-is-folder') === 'true';
-          const rect = targetTreeItem.getBoundingClientRect();
-          const relY = currentY - rect.top;
+        const rootZone = elementUnderTouch?.closest('#rootDropZone');
+        if (rootZone) {
+          rootZone.classList.add('drop-root-active');
+          this.currentDropTargetId = 'root';
+          return;
+        }
 
-          if (isFolder && relY > rect.height * 0.25 && relY < rect.height * 0.75) {
-            this.currentDropPosition = 'inside';
-            targetTreeItem.classList.add('drop-indicator-inside');
-          } else if (relY < rect.height / 2) {
-            this.currentDropPosition = 'before';
-            targetTreeItem.classList.add('drop-indicator-top');
-          } else {
-            this.currentDropPosition = 'after';
-            targetTreeItem.classList.add('drop-indicator-bottom');
-          }
-          this.currentDropTargetId = targetId;
+        const folderItem = elementUnderTouch?.closest('.tree-node-wrapper[data-is-folder="true"]') as HTMLElement;
+        if (folderItem && folderItem.getAttribute('data-id') !== this.draggedNodeId) {
+          folderItem.classList.add('drop-target-active');
+          this.currentDropTargetId = folderItem.getAttribute('data-id');
         }
       }
     }, { passive: false });
@@ -601,16 +696,21 @@ export class FileTreeDrawer {
       clearTimeout(this.longPressTimer);
       
       if (this.isDragging && this.draggedNodeId && this.currentDropTargetId) {
-        if (this.currentDropPosition === 'inside') {
-          this.vfs.moveNodeToFolder(this.draggedNodeId, this.currentDropTargetId);
+        if (this.currentDropTargetId === 'root') {
+          this.vfs.moveNodeToFolder(this.draggedNodeId, null);
         } else {
-          this.vfs.reorderNode(this.draggedNodeId, this.currentDropTargetId, this.currentDropPosition === 'before');
+          this.vfs.moveNodeToFolder(this.draggedNodeId, this.currentDropTargetId);
         }
-        this.isDragging = false;
-        this.draggedNodeId = null;
-        this.currentDropTargetId = null;
         this.render();
       }
+
+      treeContainer.querySelectorAll('.opacity-40, .drop-target-active, .drop-root-active').forEach(el => {
+        el.classList.remove('opacity-40', 'drop-target-active', 'drop-root-active');
+      });
+
+      this.isDragging = false;
+      this.draggedNodeId = null;
+      this.currentDropTargetId = null;
     });
 
     // Click handler (supports 3-dots context menu on desktop hover)
@@ -719,6 +819,11 @@ export class FileTreeDrawer {
           <span>Rename</span>
         </button>
 
+        <button data-ctx="move" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200">
+          <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+          <span>Move to...</span>
+        </button>
+
         <button data-ctx="delete" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-red-500/10 active:bg-red-500/20 text-left text-xs text-red-400">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
           <span>Delete</span>
@@ -751,6 +856,10 @@ export class FileTreeDrawer {
             this.vfs.renameNode(node.id, newName.trim());
             this.render();
           }
+        } else if (action === 'move') {
+          closePopup();
+          this.openMoveDestinationPicker(node.id);
+          return;
         } else if (action === 'delete') {
           closePopup();
           const confirmed = await AppDialog.confirm({
@@ -867,6 +976,94 @@ export class FileTreeDrawer {
         const exportFilename = `${base}.${targetExt}`;
         closePopup();
         PlatformBridge.exportFile(exportFilename, node.content);
+      });
+    });
+  }
+
+  private openMoveDestinationPicker(nodeId: string): void {
+    const node = this.vfs.getNode(nodeId);
+    if (!node) return;
+
+    const allFolders = this.vfs.getAllFolders();
+    const isDescendant = (folderId: string, ancestorId: string): boolean => {
+      let curr = this.vfs.getNode(folderId);
+      while (curr && curr.parentId) {
+        if (curr.parentId === ancestorId) return true;
+        curr = this.vfs.getNode(curr.parentId);
+      }
+      return false;
+    };
+
+    const eligibleFolders = allFolders.filter(f => {
+      if (f.id === nodeId) return false;
+      if (node.isFolder && isDescendant(f.id, nodeId)) return false;
+      if (node.parentId === f.id) return false;
+      return true;
+    });
+
+    const canMoveToRoot = node.parentId !== null;
+
+    this.contextMenuPopup.classList.remove('hidden');
+    this.contextMenuPopup.innerHTML = `
+      <div class="popup-backdrop absolute inset-0 bg-black/60"></div>
+      <div class="popup-box absolute inset-x-4 top-1/4 max-w-sm mx-auto bg-[#141418] border border-white/10 rounded-2xl shadow-2xl p-3 space-y-2 transform scale-95 opacity-0 transition-all duration-150">
+        <div class="flex items-center justify-between pb-2 border-b border-white/5">
+          <div class="flex items-center gap-2 min-w-0">
+            <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+            <span class="text-xs font-semibold text-zinc-200 truncate">Move "${node.name}" to...</span>
+          </div>
+          <button id="closeMovePickerBtn" class="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-zinc-200">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="max-h-60 overflow-y-auto space-y-1 py-1">
+          ${canMoveToRoot ? `
+            <button data-move-dest="root" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200 group transition-all">
+              <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              <div class="flex flex-col min-w-0">
+                <span class="font-medium text-zinc-200">Root Directory</span>
+                <span class="text-[10px] text-zinc-500 font-mono">/ (workspace root)</span>
+              </div>
+            </button>
+          ` : ''}
+
+          ${eligibleFolders.map(f => `
+            <button data-move-dest="${f.id}" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/5 active:bg-white/10 text-left text-xs text-zinc-200 group transition-all">
+              <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              <div class="flex flex-col min-w-0">
+                <span class="font-medium text-zinc-200 truncate">${f.name}</span>
+                <span class="text-[10px] text-zinc-500 font-mono truncate">${f.path}</span>
+              </div>
+            </button>
+          `).join('')}
+
+          ${!canMoveToRoot && eligibleFolders.length === 0 ? `
+            <div class="py-4 text-center text-xs text-zinc-500 italic">No other destination folders available.</div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    const popupBox = this.contextMenuPopup.querySelector('.popup-box') as HTMLElement;
+    void popupBox.offsetWidth;
+    popupBox.classList.remove('scale-95', 'opacity-0');
+    popupBox.classList.add('scale-100', 'opacity-100');
+
+    const closePicker = () => {
+      this.contextMenuPopup.classList.add('hidden');
+    };
+
+    this.contextMenuPopup.querySelector('.popup-backdrop')?.addEventListener('click', closePicker);
+    this.contextMenuPopup.querySelector('#closeMovePickerBtn')?.addEventListener('click', closePicker);
+
+    this.contextMenuPopup.querySelectorAll('[data-move-dest]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dest = btn.getAttribute('data-move-dest');
+        const targetFolderId = dest === 'root' ? null : dest;
+        this.vfs.moveNodeToFolder(nodeId, targetFolderId);
+        closePicker();
+        this.render();
       });
     });
   }

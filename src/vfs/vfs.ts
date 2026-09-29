@@ -38,6 +38,7 @@ export function detectLanguage(filename: string): SupportedLanguage {
     case 'rs': return 'rust';
     case 'java': return 'java';
     case 'php': return 'php';
+    case 'ipynb': return 'ipynb';
     case 'md':
     case 'markdown': return 'markdown';
     case 'org': return 'org';
@@ -550,16 +551,92 @@ export class VirtualFileSystem {
     }
   }
 
-  public moveNodeToFolder(sourceId: string, targetFolderId: string): void {
-    const source = this.state.files[sourceId];
-    const targetFolder = this.state.files[targetFolderId];
-    if (!source || !targetFolder || !targetFolder.isFolder || sourceId === targetFolderId) return;
+  public getAllFolders(): VirtualNode[] {
+    return Object.values(this.state.files).filter(f => f.isFolder);
+  }
 
+  public moveNodeToFolder(sourceId: string, targetFolderId: string | null): boolean {
+    const source = this.state.files[sourceId];
+    if (!source) return false;
+
+    // 1. Move to Root Directory
+    if (targetFolderId === null || targetFolderId === 'root' || targetFolderId === '') {
+      if (source.parentId === null) return false; // Already in root
+
+      const oldPath = source.path;
+      source.parentId = null;
+      source.path = `/${source.name}`;
+      const siblings = this.getChildren(null);
+      source.order = siblings.length;
+      source.updatedAt = Date.now();
+
+      if (source.isFolder) {
+        const updateChildrenPaths = (parentId: string, parentPath: string) => {
+          for (const f of Object.values(this.state.files)) {
+            if (f.parentId === parentId) {
+              const oldChildPath = f.path;
+              f.path = `${parentPath}/${f.name}`;
+              if (!f.isFolder) {
+                NativeStorageBridge.renameNode(oldChildPath, f.path, f.content);
+              } else {
+                updateChildrenPaths(f.id, f.path);
+              }
+            }
+          }
+        };
+        updateChildrenPaths(source.id, source.path);
+      } else {
+        NativeStorageBridge.renameNode(oldPath, source.path, source.content);
+      }
+
+      this.save();
+      return true;
+    }
+
+    // 2. Move into a specific folder
+    if (sourceId === targetFolderId) return false;
+    const targetFolder = this.state.files[targetFolderId];
+    if (!targetFolder || !targetFolder.isFolder) return false;
+    if (source.parentId === targetFolderId) return false; // Already inside target
+
+    // Cycle detection: cannot move a folder into itself or its own subfolder
+    if (source.isFolder) {
+      let curr: VirtualNode | null = targetFolder;
+      while (curr) {
+        if (curr.id === sourceId) return false;
+        curr = curr.parentId ? this.state.files[curr.parentId] : null;
+      }
+    }
+
+    const oldPath = source.path;
     source.parentId = targetFolderId;
     targetFolder.isExpanded = true;
+    source.path = `${targetFolder.path}/${source.name}`;
     const siblings = this.getChildren(targetFolderId);
     source.order = siblings.length;
+    source.updatedAt = Date.now();
+
+    if (source.isFolder) {
+      const updateChildrenPaths = (parentId: string, parentPath: string) => {
+        for (const f of Object.values(this.state.files)) {
+          if (f.parentId === parentId) {
+            const oldChildPath = f.path;
+            f.path = `${parentPath}/${f.name}`;
+            if (!f.isFolder) {
+              NativeStorageBridge.renameNode(oldChildPath, f.path, f.content);
+            } else {
+              updateChildrenPaths(f.id, f.path);
+            }
+          }
+        }
+      };
+      updateChildrenPaths(source.id, source.path);
+    } else {
+      NativeStorageBridge.renameNode(oldPath, source.path, source.content);
+    }
+
     this.save();
+    return true;
   }
 
   public toggleFolder(id: string): void {
@@ -677,6 +754,25 @@ export class VirtualFileSystem {
   public createFile(name: string, parentId: string | null = null, content: string = ''): VirtualNode {
     const id = 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
     const language = detectLanguage(name);
+
+    if (language === 'ipynb' && !content) {
+      content = JSON.stringify({
+        cells: [
+          {
+            cell_type: 'code',
+            execution_count: null,
+            metadata: {},
+            outputs: [],
+            source: ['# Jupyter Notebook\nprint("Hello from EdgeIDE!")']
+          }
+        ],
+        metadata: {
+          language_info: { name: 'python' }
+        },
+        nbformat: 4,
+        nbformat_minor: 4
+      }, null, 2);
+    }
     
     let path = '/' + name;
     if (parentId && this.state.files[parentId]) {

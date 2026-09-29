@@ -19,12 +19,14 @@ import { P2PEngine } from './sharing/p2p-engine';
 import { ShareModal } from './sharing/ShareModal';
 import { SearchModal } from './components/SearchModal';
 import { SplitViewManager } from './components/SplitViewManager';
+import { NotebookEditor } from './notebook/NotebookEditor';
 
 class MobileApp {
   private vfs: VirtualFileSystem;
   private settingsStore: SettingsStore;
   private runtimeManager: RuntimeManager;
   private editor: CodeEditor;
+  public notebookEditor!: NotebookEditor;
   private p2pEngine: P2PEngine;
   
   public header!: Header;
@@ -152,6 +154,19 @@ class MobileApp {
       }
     );
 
+    // 8.5. Jupyter Notebook Editor
+    this.notebookEditor = new NotebookEditor(
+      this.editorContainer,
+      this.vfs,
+      this.runtimeManager.getPythonRuntime(),
+      this.settingsStore
+    );
+
+    if (activeFile && (activeFile.language === 'ipynb' || activeFile.name.toLowerCase().endsWith('.ipynb'))) {
+      this.editor.getDomElement().style.display = 'none';
+      this.notebookEditor.loadNotebook(activeFile.id, activeFile.content);
+    }
+
     // 9. Split View Manager
     this.splitManager = new SplitViewManager(
       this.editorContainer,
@@ -193,12 +208,27 @@ class MobileApp {
   private switchFile(fileId: string): void {
     this.vfs.setActiveFile(fileId);
     const file = this.vfs.getFile(fileId);
-    if (file) {
+    if (!file) return;
+
+    if (file.language === 'ipynb' || file.name.toLowerCase().endsWith('.ipynb')) {
+      this.editor.getDomElement().style.display = 'none';
+      this.notebookEditor.loadNotebook(file.id, file.content);
+    } else {
+      this.notebookEditor.hide();
+      this.editor.getDomElement().style.display = '';
       this.editor.setContent(file.content, file.language);
     }
   }
 
   private async handleRun(): Promise<void> {
+    const activeFile = this.vfs.getActiveFile();
+    if (!activeFile) return;
+
+    if (activeFile.language === 'ipynb' || activeFile.name.toLowerCase().endsWith('.ipynb')) {
+      this.notebookEditor.handleHeaderRun();
+      return;
+    }
+
     const status = this.runtimeManager.getStatus();
     if (status.state === 'running' || status.state === 'loading_runtime') {
       this.runtimeManager.terminate();
@@ -210,9 +240,6 @@ class MobileApp {
       });
       return;
     }
-
-    const activeFile = this.vfs.getActiveFile();
-    if (!activeFile) return;
 
     if (activeFile.language === 'html' || activeFile.language === 'css' || activeFile.language === 'markdown' || activeFile.name.toLowerCase().endsWith('.md')) {
       this.outputPanel.open('preview');

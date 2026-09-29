@@ -19,6 +19,7 @@ export type SupportedLanguage =
   | 'java'
   | 'php'
   | 'markdown' 
+  | 'ipynb'
   | 'org'
   | 'rst'
   | 'adoc'

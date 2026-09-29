@@ -222,12 +222,21 @@ export const Icons = {
     <path d="M16 12h1"/>
     <path d="M21 12v.01"/>
     <path d="M12 21v-1"/>
+  </svg>`,
+
+  ipynb: `<svg class="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="16" height="20" x="4" y="2" rx="2.5"/>
+    <circle cx="8" cy="7" r="1" fill="currentColor"/>
+    <circle cx="8" cy="12" r="1" fill="currentColor"/>
+    <circle cx="8" cy="17" r="1" fill="currentColor"/>
+    <path d="M12 7h5m-5 5h5m-5 5h3"/>
   </svg>`
 };
 
 export function getFileIcon(lang: string): string {
   switch (lang) {
     case 'python': return Icons.python;
+    case 'ipynb': return Icons.ipynb;
     case 'javascript': return Icons.javascript;
     case 'typescript': return Icons.typescript;
     case 'react': return Icons.react;
