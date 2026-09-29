@@ -485,6 +485,13 @@ class MobileApp {
       // 12. If no overlays are open, exit app gracefully
       App.exitApp();
     });
+
+    // Re-scan native Documents/EdgeIDE on every app resume to pick up new files
+    App.addListener('appStateChange', async ({ isActive }) => {
+      if (isActive) {
+        await this.vfs.rescanNativeStorage();
+      }
+    });
   }
 }
 

@@ -106,63 +106,8 @@ export class VirtualFileSystem {
         needsSave = true;
       }
 
-      // Auto-import any files from Native Storage that aren't in VFS yet
-      const nativeItems = await NativeStorageBridge.readAllFiles();
-      let importedAny = false;
-      
-      // First pass: create all nodes
-      for (const item of nativeItems) {
-        const cleanPath = this.normalizePath(item.path);
-        if (!this.getNodeByPath(cleanPath)) {
-          importedAny = true;
-          needsSave = true;
-          const name = cleanPath.split('/').pop() || 'Untitled';
-          const id = (item.isFolder ? 'folder_' : 'f_') + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
-          this.state.files[id] = {
-            id,
-            name,
-            path: cleanPath,
-            parentId: null,
-            isFolder: item.isFolder,
-            language: item.isFolder ? 'plaintext' : detectLanguage(name),
-            updatedAt: Date.now(),
-            content: item.content || ''
-          };
-          if (item.isFolder) {
-            this.state.files[id].isExpanded = true;
-          }
-        }
-      }
-
-      if (importedAny) {
-        this.rebuildIndices();
-        // Second pass: link parentIds correctly
-        for (const node of Object.values(this.state.files)) {
-           const lastSlash = node.path.lastIndexOf('/');
-           if (lastSlash > 0) {
-              const parentPath = node.path.substring(0, lastSlash);
-              const parentId = this.pathIndex.get(parentPath);
-              if (parentId) {
-                node.parentId = parentId;
-              }
-           }
-        }
-        this.rebuildIndices();
-        
-        // Set active file if none open
-        if (!this.state.activeFileId || !this.state.files[this.state.activeFileId]) {
-           const firstFile = Object.values(this.state.files).find(f => !f.isFolder);
-           if (firstFile) {
-              this.state.activeFileId = firstFile.id;
-              if (!this.state.openTabs.includes(firstFile.id)) {
-                 this.state.openTabs.push(firstFile.id);
-              }
-           }
-        }
-        this.notify();
-      } else if (!this.hasUserEditedSinceStartup) {
-        this.notify();
-      }
+      const imported = await this.importFromNativeStorage();
+      if (imported) needsSave = true;
 
       if (needsSave) {
         await EdgeIDBStorage.set(STORAGE_KEY, this.state);
@@ -172,6 +117,78 @@ export class VirtualFileSystem {
     } finally {
       this.isHydrated = true;
     }
+  }
+
+  /**
+   * Scans Documents/EdgeIDE on the device and imports any files not yet in the VFS.
+   * Called on boot and on every app resume via App.addListener('appStateChange').
+   */
+  public async rescanNativeStorage(): Promise<void> {
+    if (!NativeStorageBridge.isNative()) return;
+    try {
+      const imported = await this.importFromNativeStorage();
+      if (imported) {
+        await EdgeIDBStorage.set(STORAGE_KEY, this.state);
+      }
+    } catch (err) {
+      console.warn('[VFS] rescanNativeStorage error:', err);
+    }
+  }
+
+  private async importFromNativeStorage(): Promise<boolean> {
+    const nativeItems = await NativeStorageBridge.readAllFiles();
+    let importedAny = false;
+
+    // First pass: create nodes for new items
+    for (const item of nativeItems) {
+      const cleanPath = this.normalizePath(item.path);
+      if (!this.getNodeByPath(cleanPath)) {
+        importedAny = true;
+        const name = cleanPath.split('/').pop() || 'Untitled';
+        const id = (item.isFolder ? 'folder_' : 'f_') + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+        this.state.files[id] = {
+          id,
+          name,
+          path: cleanPath,
+          parentId: null,
+          isFolder: item.isFolder,
+          language: item.isFolder ? 'plaintext' : detectLanguage(name),
+          updatedAt: Date.now(),
+          content: item.content || ''
+        };
+        if (item.isFolder) {
+          this.state.files[id].isExpanded = true;
+        }
+      }
+    }
+
+    if (importedAny) {
+      this.rebuildIndices();
+      // Second pass: link parentIds
+      for (const node of Object.values(this.state.files)) {
+        const lastSlash = node.path.lastIndexOf('/');
+        if (lastSlash > 0) {
+          const parentPath = node.path.substring(0, lastSlash);
+          const parentId = this.pathIndex.get(parentPath);
+          if (parentId) node.parentId = parentId;
+        }
+      }
+      this.rebuildIndices();
+
+      // Set active file if none open
+      if (!this.state.activeFileId || !this.state.files[this.state.activeFileId]) {
+        const firstFile = Object.values(this.state.files).find(f => !f.isFolder);
+        if (firstFile) {
+          this.state.activeFileId = firstFile.id;
+          if (!this.state.openTabs.includes(firstFile.id)) {
+            this.state.openTabs.push(firstFile.id);
+          }
+        }
+      }
+      this.notify();
+    }
+
+    return importedAny;
   }
 
   private normalizePath(path: string): string {

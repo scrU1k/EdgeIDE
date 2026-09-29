@@ -8,10 +8,26 @@ export class NativeStorageBridge {
     return Capacitor.isNativePlatform();
   }
 
+  public static async requestPermissions(): Promise<boolean> {
+    if (!this.isNative()) return true;
+    try {
+      const status = await Filesystem.checkPermissions();
+      if (status.publicStorage !== 'granted') {
+        const req = await Filesystem.requestPermissions();
+        return req.publicStorage === 'granted';
+      }
+      return true;
+    } catch (e) {
+      console.warn('Filesystem permission check failed:', e);
+      return false;
+    }
+  }
+
   public static async init(): Promise<void> {
     if (!this.isNative()) return;
 
     try {
+      await this.requestPermissions();
       // Check or create Documents/EdgeIDE folder
       await Filesystem.mkdir({
         path: ROOT_FOLDER,
@@ -98,15 +114,27 @@ export class NativeStorageBridge {
 
   public static async readAllFiles(): Promise<{ path: string, isFolder: boolean, content?: string }[]> {
     if (!this.isNative()) return [];
+    await this.requestPermissions();
     const results: { path: string, isFolder: boolean, content?: string }[] = [];
 
     const scan = async (dirPath: string, relativePrefix: string) => {
       try {
         const res = await Filesystem.readdir({ path: dirPath, directory: Directory.Documents });
+        if (!res || !res.files) return;
+
         for (const file of res.files) {
-          const relPath = relativePrefix + '/' + file.name;
-          const fullPath = dirPath + '/' + file.name;
-          if (file.type === 'directory') {
+          const name = typeof file === 'string' ? file : (file.name || '');
+          if (!name) continue;
+
+          let isDir = false;
+          if (typeof file === 'object' && file !== null && file.type) {
+            isDir = file.type === 'directory';
+          }
+
+          const relPath = relativePrefix + '/' + name;
+          const fullPath = dirPath + '/' + name;
+
+          if (isDir) {
             results.push({ path: relPath, isFolder: true });
             await scan(fullPath, relPath);
           } else {
@@ -114,12 +142,21 @@ export class NativeStorageBridge {
               const data = await Filesystem.readFile({ path: fullPath, directory: Directory.Documents, encoding: Encoding.UTF8 });
               results.push({ path: relPath, isFolder: false, content: typeof data.data === 'string' ? data.data : '' });
             } catch (err) {
-              console.warn('Read fail', fullPath, err);
+              // If readFile fails, check if it's a directory that wasn't flagged by file.type
+              try {
+                const stat = await Filesystem.stat({ path: fullPath, directory: Directory.Documents });
+                if (stat && stat.type === 'directory') {
+                  results.push({ path: relPath, isFolder: true });
+                  await scan(fullPath, relPath);
+                  continue;
+                }
+              } catch {}
+              console.warn('[NativeStorage] Read fail for ' + fullPath, err);
             }
           }
         }
       } catch (err) {
-         // folder might not exist or error reading
+        console.warn('[NativeStorage] Scan error on ' + dirPath, err);
       }
     };
 
