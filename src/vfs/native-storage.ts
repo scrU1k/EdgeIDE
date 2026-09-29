@@ -95,4 +95,36 @@ export class NativeStorageBridge {
       console.warn('Native rename failed for ' + oldRelativePath + ' -> ' + newRelativePath, e);
     }
   }
+
+  public static async readAllFiles(): Promise<{ path: string, isFolder: boolean, content?: string }[]> {
+    if (!this.isNative()) return [];
+    const results: { path: string, isFolder: boolean, content?: string }[] = [];
+
+    const scan = async (dirPath: string, relativePrefix: string) => {
+      try {
+        const res = await Filesystem.readdir({ path: dirPath, directory: Directory.Documents });
+        for (const file of res.files) {
+          const relPath = relativePrefix + '/' + file.name;
+          const fullPath = dirPath + '/' + file.name;
+          if (file.type === 'directory') {
+            results.push({ path: relPath, isFolder: true });
+            await scan(fullPath, relPath);
+          } else {
+            try {
+              const data = await Filesystem.readFile({ path: fullPath, directory: Directory.Documents, encoding: Encoding.UTF8 });
+              results.push({ path: relPath, isFolder: false, content: typeof data.data === 'string' ? data.data : '' });
+            } catch (err) {
+              console.warn('Read fail', fullPath, err);
+            }
+          }
+        }
+      } catch (err) {
+         // folder might not exist or error reading
+      }
+    };
+
+    await scan(ROOT_FOLDER, '');
+    return results;
+  }
 }
+

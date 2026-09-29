@@ -64,245 +64,7 @@ export function isNoteFormat(language: SupportedLanguage): boolean {
   ].includes(language);
 }
 
-const DEFAULT_NODES: Record<string, VirtualNode> = {
-  'f_python_main': {
-    id: 'f_python_main',
-    name: 'main.py',
-    path: '/main.py',
-    parentId: null,
-    isFolder: false,
-    language: 'python',
-    updatedAt: Date.now(),
-    content: `# On-Device Python (CPython in WebAssembly via Pyodide)
-import math
-import time
-
-def fibonacci(n):
-    a, b = 0, 1
-    for _ in range(n):
-        yield a
-        a, b = b, a + b
-
-print("Running Python on your device (CPython WASM)")
-print("========================================")
-
-start = time.time()
-fib_numbers = list(fibonacci(15))
-elapsed = (time.time() - start) * 1000
-
-print(f"First 15 Fibonacci numbers: {fib_numbers}")
-print(f"Calculated in {elapsed:.3f} ms")
-print(f"Pi approximation: {math.pi:.6f}")
-print("========================================")
-print("Tip: You can import math, json, statistics, etc.")
-`
-  },
-  'f_js_script': {
-    id: 'f_js_script',
-    name: 'script.js',
-    path: '/script.js',
-    parentId: null,
-    isFolder: false,
-    language: 'javascript',
-    updatedAt: Date.now(),
-    content: `// On-Device JavaScript Execution
-console.log("Hello from On-Device JavaScript Engine");
-
-function calculateStats(numbers) {
-  const sum = numbers.reduce((acc, val) => acc + val, 0);
-  const avg = sum / numbers.length;
-  const max = Math.max(...numbers);
-  const min = Math.min(...numbers);
-  return { count: numbers.length, sum, avg, min, max };
-}
-
-const sampleData = [12, 45, 67, 89, 23, 56, 91, 34];
-console.log("Sample Data:", sampleData);
-console.log("Computed Statistics:", calculateStats(sampleData));
-
-// Benchmarking loop performance
-const t0 = performance.now();
-let primeCount = 0;
-for (let n = 2; n < 50000; n++) {
-  let isPrime = true;
-  for (let d = 2; d * d <= n; d++) {
-    if (n % d === 0) { isPrime = false; break; }
-  }
-  if (isPrime) primeCount++;
-}
-const t1 = performance.now();
-console.log(\`Found \${primeCount} primes under 50,000 in \${(t1 - t0).toFixed(2)}ms\`);
-`
-  },
-  'folder_web': {
-    id: 'folder_web',
-    name: 'web-app',
-    path: '/web-app',
-    parentId: null,
-    isFolder: true,
-    isExpanded: true,
-    language: 'plaintext',
-    content: '',
-    updatedAt: Date.now()
-  },
-  'f_web_html': {
-    id: 'f_web_html',
-    name: 'index.html',
-    path: '/web-app/index.html',
-    parentId: 'folder_web',
-    isFolder: false,
-    language: 'html',
-    updatedAt: Date.now(),
-    content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Interactive Mobile App</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <div class="card">
-    <div class="badge">Live On-Device Preview</div>
-    <h1>Mobile Web Sandbox</h1>
-    <p>Edit HTML, CSS, and JS to see instant live updates!</p>
-    
-    <div class="counter-box">
-      <button id="decBtn" class="btn btn-secondary">-</button>
-      <span id="counterValue">0</span>
-      <button id="incBtn" class="btn btn-primary">+</button>
-    </div>
-    
-    <button id="colorBtn" class="btn btn-rainbow">Generate Random Theme</button>
-  </div>
-  <script src="app.js"></script>
-</body>
-</html>`
-  },
-  'f_web_css': {
-    id: 'f_web_css',
-    name: 'style.css',
-    path: '/web-app/style.css',
-    parentId: 'folder_web',
-    isFolder: false,
-    language: 'css',
-    updatedAt: Date.now(),
-    content: `body {
-  margin: 0;
-  padding: 20px;
-  background: #000000;
-  color: #f8fafc;
-  font-family: system-ui, -apple-system, sans-serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  box-sizing: border-box;
-}
-
-.card {
-  background: #0d0d11;
-  border-radius: 20px;
-  padding: 28px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.8);
-  text-align: center;
-  max-width: 320px;
-  width: 100%;
-}
-
-.badge {
-  display: inline-block;
-  background: #6366f1;
-  color: white;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 999px;
-  text-transform: uppercase;
-  margin-bottom: 12px;
-}
-
-h1 {
-  font-size: 20px;
-  margin: 0 0 8px;
-}
-
-p {
-  font-size: 13px;
-  color: #94a3b8;
-  margin-bottom: 20px;
-}
-
-.counter-box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-#counterValue {
-  font-size: 28px;
-  font-weight: 700;
-  min-width: 48px;
-}
-
-.btn {
-  border: none;
-  padding: 10px 18px;
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.btn-primary { background: #6366f1; color: white; }
-.btn-secondary { background: #1e1e24; color: white; }
-.btn-rainbow {
-  width: 100%;
-  background: linear-gradient(135deg, #6366f1, #a855f7);
-  color: white;
-  margin-top: 8px;
-}`
-  },
-  'f_web_js': {
-    id: 'f_web_js',
-    name: 'app.js',
-    path: '/web-app/app.js',
-    parentId: 'folder_web',
-    isFolder: false,
-    language: 'javascript',
-    updatedAt: Date.now(),
-    content: `let count = 0;
-const counterEl = document.getElementById('counterValue');
-const incBtn = document.getElementById('incBtn');
-const decBtn = document.getElementById('decBtn');
-const colorBtn = document.getElementById('colorBtn');
-
-incBtn.addEventListener('click', () => {
-  count++;
-  counterEl.textContent = count;
-});
-
-decBtn.addEventListener('click', () => {
-  count--;
-  counterEl.textContent = count;
-});
-
-colorBtn.addEventListener('click', () => {
-  const colors = [
-    'linear-gradient(135deg, #09090b, #000000)',
-    'linear-gradient(135deg, #1e1b4b, #020617)',
-    'linear-gradient(135deg, #064e3b, #022c22)',
-    'linear-gradient(135deg, #3b0764, #000000)'
-  ];
-  const chosen = colors[Math.floor(Math.random() * colors.length)];
-  document.body.style.background = chosen;
-});
-`
-  }
-};
+const DEFAULT_NODES: Record<string, VirtualNode> = {};
 
 export class VirtualFileSystem {
   private state: ProjectState;
@@ -329,18 +91,80 @@ export class VirtualFileSystem {
 
   private async initIndexedDB(): Promise<void> {
     try {
+      await NativeStorageBridge.init();
       const idbState = await EdgeIDBStorage.get<ProjectState>(STORAGE_KEY);
-      if (idbState && idbState.files && idbState.activeFileId) {
-        // Finding 5: If the user edited during the async IDB load window, keep the
-        // newer in-memory state and immediately persist it to IDB instead of overwriting.
+      let needsSave = false;
+
+      if (idbState && idbState.files && typeof idbState.activeFileId !== 'undefined') {
         if (this.hasUserEditedSinceStartup) {
-          await EdgeIDBStorage.set(STORAGE_KEY, this.state);
+          needsSave = true;
         } else {
           this.state = idbState;
           this.rebuildIndices();
-          this.notify();
         }
-      } else if (this.state) {
+      } else {
+        needsSave = true;
+      }
+
+      // Auto-import any files from Native Storage that aren't in VFS yet
+      const nativeItems = await NativeStorageBridge.readAllFiles();
+      let importedAny = false;
+      
+      // First pass: create all nodes
+      for (const item of nativeItems) {
+        const cleanPath = this.normalizePath(item.path);
+        if (!this.getNodeByPath(cleanPath)) {
+          importedAny = true;
+          needsSave = true;
+          const name = cleanPath.split('/').pop() || 'Untitled';
+          const id = (item.isFolder ? 'folder_' : 'f_') + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+          this.state.files[id] = {
+            id,
+            name,
+            path: cleanPath,
+            parentId: null,
+            isFolder: item.isFolder,
+            language: item.isFolder ? 'plaintext' : detectLanguage(name),
+            updatedAt: Date.now(),
+            content: item.content || ''
+          };
+          if (item.isFolder) {
+            this.state.files[id].isExpanded = true;
+          }
+        }
+      }
+
+      if (importedAny) {
+        this.rebuildIndices();
+        // Second pass: link parentIds correctly
+        for (const node of Object.values(this.state.files)) {
+           const lastSlash = node.path.lastIndexOf('/');
+           if (lastSlash > 0) {
+              const parentPath = node.path.substring(0, lastSlash);
+              const parentId = this.pathIndex.get(parentPath);
+              if (parentId) {
+                node.parentId = parentId;
+              }
+           }
+        }
+        this.rebuildIndices();
+        
+        // Set active file if none open
+        if (!this.state.activeFileId || !this.state.files[this.state.activeFileId]) {
+           const firstFile = Object.values(this.state.files).find(f => !f.isFolder);
+           if (firstFile) {
+              this.state.activeFileId = firstFile.id;
+              if (!this.state.openTabs.includes(firstFile.id)) {
+                 this.state.openTabs.push(firstFile.id);
+              }
+           }
+        }
+        this.notify();
+      } else if (!this.hasUserEditedSinceStartup) {
+        this.notify();
+      }
+
+      if (needsSave) {
         await EdgeIDBStorage.set(STORAGE_KEY, this.state);
       }
     } catch (err) {
@@ -389,7 +213,7 @@ export class VirtualFileSystem {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.files && parsed.activeFileId) {
+        if (parsed.files && typeof parsed.activeFileId !== 'undefined') {
           return parsed;
         }
       }
@@ -397,8 +221,8 @@ export class VirtualFileSystem {
 
     return {
       files: { ...DEFAULT_NODES },
-      activeFileId: 'f_python_main',
-      openTabs: ['f_python_main', 'f_js_script', 'f_web_html']
+      activeFileId: '',
+      openTabs: []
     };
   }
 
