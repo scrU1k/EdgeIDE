@@ -235,9 +235,9 @@ export class FileTreeDrawer {
           <span class="action-btn-text truncate">+ Folder</span>
         </button>
         <!-- Upload button (icon only) -->
-        <label id="drawerUploadBtn" title="Upload / Import file from device" class="p-2 bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-200 rounded-xl text-xs font-medium transition-all shrink-0 cursor-pointer flex items-center justify-center">
+        <label id="drawerUploadBtn" title="Upload / Import file from device" class="relative p-2 bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-200 rounded-xl text-xs font-medium transition-all shrink-0 cursor-pointer flex items-center justify-center overflow-hidden">
           ${Icons.upload}
-          <input type="file" id="drawerFileInput" multiple class="hidden" />
+          <input type="file" id="drawerFileInput" multiple class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" />
         </label>
       </div>
 
