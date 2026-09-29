@@ -38,8 +38,8 @@ export class NotebookEditor {
   private executionCounter: number = 0;
   private saveDebounceTimer: any = null;
 
-  // Theme compartment for dynamic theme updates
-  private themeCompartment = new Compartment();
+  // Theme compartments per cell for isolated dynamic theme updates
+  private cellThemeCompartments: Map<string, Compartment> = new Map();
 
   constructor(
     parent: HTMLElement,
@@ -93,20 +93,25 @@ export class NotebookEditor {
   }
 
   public loadNotebook(fileId: string, content: string): void {
-    this.currentFileId = fileId;
-    this.notebook = parseNotebook(content);
+    try {
+      this.currentFileId = fileId;
+      this.notebook = parseNotebook(content);
 
-    // Calculate maximum existing execution count
-    let maxCount = 0;
-    for (const c of this.notebook.cells) {
-      if (typeof c.execution_count === 'number' && c.execution_count > maxCount) {
-        maxCount = c.execution_count;
+      // Calculate maximum existing execution count
+      let maxCount = 0;
+      for (const c of this.notebook.cells) {
+        if (typeof c.execution_count === 'number' && c.execution_count > maxCount) {
+          maxCount = c.execution_count;
+        }
       }
-    }
-    this.executionCounter = maxCount;
+      this.executionCounter = maxCount;
 
-    this.show();
-    this.renderAll();
+      this.show();
+      this.renderAll();
+    } catch (err) {
+      console.error('Failed to parse or render notebook:', err);
+      this.show();
+    }
   }
 
   private debounceSave(): void {
@@ -357,6 +362,12 @@ export class NotebookEditor {
 
       const langExt = cell.cell_type === 'code' ? python() : cell.cell_type === 'markdown' ? getMarkdownSyntaxExtension() : [];
 
+      let cellThemeComp = this.cellThemeCompartments.get(cell.id);
+      if (!cellThemeComp) {
+        cellThemeComp = new Compartment();
+        this.cellThemeCompartments.set(cell.id, cellThemeComp);
+      }
+
       const startState = EditorState.create({
         doc: cell.source,
         extensions: [
@@ -366,7 +377,7 @@ export class NotebookEditor {
           bracketMatching(),
           closeBrackets(),
           EditorView.lineWrapping,
-          this.themeCompartment.of(getCodeThemeExtensions(this.settings.codeTheme, this.settings.themeMode)),
+          cellThemeComp.of(getCodeThemeExtensions(this.settings.codeTheme, this.settings.themeMode)),
           keymap.of([
             ...defaultKeymap,
             ...historyKeymap,
@@ -741,12 +752,15 @@ export class NotebookEditor {
   }
 
   private updateTheme(): void {
-    for (const view of this.cellViews.values()) {
-      view.dispatch({
-        effects: this.themeCompartment.reconfigure(
-          getCodeThemeExtensions(this.settings.codeTheme, this.settings.themeMode)
-        )
-      });
+    for (const [cellId, view] of this.cellViews.entries()) {
+      const comp = this.cellThemeCompartments.get(cellId);
+      if (comp) {
+        view.dispatch({
+          effects: comp.reconfigure(
+            getCodeThemeExtensions(this.settings.codeTheme, this.settings.themeMode)
+          )
+        });
+      }
     }
   }
 

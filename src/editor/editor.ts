@@ -30,6 +30,7 @@ export class CodeEditor {
   private onChangeCallback: ((content: string) => void) | null = null;
   private onSelectionChangeCallback: ((cursorCount: number) => void) | null = null;
   private dictDebounceTimer: any = null;
+  private isProgrammaticUpdate: boolean = false;
   private container!: HTMLElement;
 
   public init(
@@ -184,7 +185,7 @@ export class CodeEditor {
           }
         }),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
+          if (update.docChanged && !this.isProgrammaticUpdate) {
             const docStr = update.state.doc.toString();
             if (this.onChangeCallback) {
               this.onChangeCallback(docStr);
@@ -296,19 +297,24 @@ export class CodeEditor {
   public setContent(content: string, language: SupportedLanguage): void {
     if (!this.view) return;
     this.currentLanguage = language;
+    this.isProgrammaticUpdate = true;
 
-    const currentDoc = this.view.state.doc.toString();
-    if (currentDoc === content) {
+    try {
+      const currentDoc = this.view.state.doc.toString();
+      if (currentDoc === content) {
+        this.view.dispatch({
+          effects: this.languageCompartment.reconfigure(this.getLanguageExtension(language))
+        });
+        return;
+      }
+
       this.view.dispatch({
+        changes: { from: 0, to: currentDoc.length, insert: content },
         effects: this.languageCompartment.reconfigure(this.getLanguageExtension(language))
       });
-      return;
+    } finally {
+      this.isProgrammaticUpdate = false;
     }
-
-    this.view.dispatch({
-      changes: { from: 0, to: currentDoc.length, insert: content },
-      effects: this.languageCompartment.reconfigure(this.getLanguageExtension(language))
-    });
   }
 
   public getContent(): string {

@@ -43,6 +43,8 @@ class MobileApp {
 
   private appRoot: HTMLElement;
   private editorContainer!: HTMLElement;
+  private activeFileId: string = '';
+  private isSwitchingFile: boolean = false;
 
   constructor() {
     this.appRoot = document.getElementById('app')!;
@@ -141,6 +143,7 @@ class MobileApp {
     this.appRoot.appendChild(this.editorContainer);
 
     const activeFile = this.vfs.getActiveFile();
+    this.activeFileId = activeFile?.id || this.vfs.getState().activeFileId || '';
     this.editor.init(
       this.editorContainer,
       activeFile?.content || '',
@@ -163,7 +166,7 @@ class MobileApp {
     );
 
     if (activeFile && (activeFile.language === 'ipynb' || activeFile.name.toLowerCase().endsWith('.ipynb'))) {
-      this.editor.getDomElement().style.display = 'none';
+      this.editor.getDomElement().style.setProperty('display', 'none', 'important');
       this.notebookEditor.loadNotebook(activeFile.id, activeFile.content);
     }
 
@@ -206,17 +209,28 @@ class MobileApp {
   }
 
   private switchFile(fileId: string): void {
-    this.vfs.setActiveFile(fileId);
-    const file = this.vfs.getFile(fileId);
-    if (!file) return;
+    if (this.isSwitchingFile) return;
+    this.isSwitchingFile = true;
+    this.activeFileId = fileId;
 
-    if (file.language === 'ipynb' || file.name.toLowerCase().endsWith('.ipynb')) {
-      this.editor.getDomElement().style.display = 'none';
-      this.notebookEditor.loadNotebook(file.id, file.content);
-    } else {
-      this.notebookEditor.hide();
-      this.editor.getDomElement().style.display = '';
-      this.editor.setContent(file.content, file.language);
+    try {
+      this.vfs.setActiveFile(fileId);
+      const file = this.vfs.getFile(fileId);
+      if (!file) return;
+
+      if (file.language === 'ipynb' || file.name.toLowerCase().endsWith('.ipynb')) {
+        this.editor.getDomElement().style.setProperty('display', 'none', 'important');
+        this.notebookEditor.loadNotebook(file.id, file.content);
+      } else {
+        this.notebookEditor.hide();
+        this.editor.getDomElement().style.removeProperty('display');
+        this.editor.getDomElement().style.display = '';
+        this.editor.setContent(file.content, file.language);
+      }
+    } catch (err) {
+      console.error('Failed to switch file:', err);
+    } finally {
+      this.isSwitchingFile = false;
     }
   }
 
@@ -316,12 +330,11 @@ class MobileApp {
       document.documentElement.setAttribute('data-theme', s.themeMode);
     });
 
-    // VFS active file listener to update editor when active file changes
-    let lastActiveFileId = this.vfs.getState().activeFileId;
+    // VFS active file listener to update editor when active file changes externally (e.g. tab closed)
     this.vfs.subscribe(() => {
+      if (this.isSwitchingFile) return;
       const active = this.vfs.getActiveFile();
-      if (active && active.id !== lastActiveFileId) {
-        lastActiveFileId = active.id;
+      if (active && active.id !== this.activeFileId) {
         this.switchFile(active.id);
       }
     });
