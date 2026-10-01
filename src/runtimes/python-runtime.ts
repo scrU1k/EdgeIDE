@@ -216,32 +216,41 @@ onmessage = async (e) => {
         await py.loadPackagesFromImports(code);
       } catch (loadErr) {}
 
-      // Prepend matplotlib setup directly into user code execution to guarantee backend is Agg before any plot imports
+      // Prepend matplotlib setup: stub matplotlib_pyodide in sys.modules BEFORE any matplotlib import.
+      // This prevents browser_backend.py from calling document.createTextNode in the Web Worker.
+      // Use lowercase 'agg' to select the pure C-extension Agg renderer, not the wasm/browser backend.
       let codeToExecute = code;
-      if (/import\s+matplotlib|from\s+matplotlib/m.test(code)) {
-        codeToExecute = 
-          "import sys, io, os, base64\\n" +
-          "os.environ['MPLBACKEND'] = 'Agg'\\n" +
-          "try:\\n" +
-          "    import matplotlib\\n" +
-          "    matplotlib.use('Agg')\\n" +
-          "    import matplotlib.pyplot as plt\\n" +
-          "    def _edgeide_show(*args, **kwargs):\\n" +
-          "        try:\\n" +
-          "            for _fnum in plt.get_fignums():\\n" +
-          "                _fig = plt.figure(_fnum)\\n" +
-          "                _buf = io.BytesIO()\\n" +
-          "                _fig.savefig(_buf, format='png', bbox_inches='tight', dpi=100)\\n" +
-          "                _buf.seek(0)\\n" +
-          "                _b64 = base64.b64encode(_buf.read()).decode('ascii')\\n" +
-          "                print('\\n__EDGEIDE_IMAGE_PNG__' + _b64 + '__EDGEIDE_IMAGE_END__\\n')\\n" +
-          "                plt.close(_fig)\\n" +
-          "        except Exception as _e:\\n" +
-          "            print(f'[Matplotlib rendering: {_e}]', file=sys.stderr)\\n" +
-          "    plt.show = _edgeide_show\\n" +
-          "except Exception:\\n" +
-          "    pass\\n" +
-          code;
+      if (/import[\s\S]*?matplotlib|from[\s\S]*?matplotlib/m.test(code)) {
+        const mplSetup =
+          "import sys as _sys, io as _io, os as _os, base64 as _base64, types as _types\\n" +
+          "for _stub_mod in ['matplotlib_pyodide', 'matplotlib_pyodide.wasm_backend', 'matplotlib_pyodide.browser_backend', 'matplotlib.backends.backend_wasm']:\\n" +
+          "    if _stub_mod not in _sys.modules:\\n" +
+          "        _sys.modules[_stub_mod] = _types.ModuleType(_stub_mod)\\n" +
+          "for _stub_mod in ['matplotlib_pyodide', 'matplotlib_pyodide.wasm_backend', 'matplotlib_pyodide.browser_backend']:\\n" +
+          "    if _stub_mod in _sys.modules:\\n" +
+          "        _m = _sys.modules[_stub_mod]\\n" +
+          "        for _attr in ['FigureCanvas', 'FigureManager', 'new_figure_manager', 'show', '_backend_mod']:\\n" +
+          "            if not hasattr(_m, _attr): setattr(_m, _attr, None)\\n" +
+          "_os.environ['MPLBACKEND'] = 'agg'\\n" +
+          "import matplotlib as _matplotlib\\n" +
+          "_matplotlib.use('agg')\\n" +
+          "import matplotlib.pyplot as _plt\\n" +
+          "def _edgeide_show(*args, **kwargs):\\n" +
+          "    try:\\n" +
+          "        for _fnum in _plt.get_fignums():\\n" +
+          "            _fig = _plt.figure(_fnum)\\n" +
+          "            _buf = _io.BytesIO()\\n" +
+          "            _fig.savefig(_buf, format='png', bbox_inches='tight', dpi=100)\\n" +
+          "            _buf.seek(0)\\n" +
+          "            _b64 = _base64.b64encode(_buf.read()).decode('ascii')\\n" +
+          "            print('\\\\n__EDGEIDE_IMAGE_PNG__' + _b64 + '__EDGEIDE_IMAGE_END__\\\\n')\\n" +
+          "            _plt.close(_fig)\\n" +
+          "    except Exception as _e:\\n" +
+          "        print('[Matplotlib: ' + str(_e) + ']', file=_sys.stderr)\\n" +
+          "_plt.show = _edgeide_show\\n" +
+          "import matplotlib.pyplot as plt\\n" +
+          "plt.show = _edgeide_show\\n";
+        codeToExecute = mplSetup + code;
       }
 
       // Execute Python asynchronously in background worker thread
