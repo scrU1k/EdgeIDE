@@ -185,7 +185,12 @@ export class OutputPanel {
       previewContent.style.background = isLight ? '#ffffff' : '#09090b';
     }
     const htmlBundle = HtmlPreviewBuilder.buildBundle(this.vfs, undefined, this.allowNetwork, isLight);
-    this.iframeEl.srcdoc = htmlBundle;
+    // Force reload: blank srcdoc first so setting the new value always triggers navigation,
+    // even if the string value is identical to what was previously set.
+    this.iframeEl.srcdoc = '';
+    requestAnimationFrame(() => {
+      if (this.iframeEl) this.iframeEl.srcdoc = htmlBundle;
+    });
   }
 
   private updateTabVisibility(): void {
@@ -212,10 +217,16 @@ export class OutputPanel {
       }
     });
 
-    // Hide contents
+    // Hide contents — use display:none for console/terminal (safe), but for the
+    // preview iframe use visibility/opacity toggling so the browsing context is
+    // never unloaded (Chrome/WebView discards the iframe's document on display:none).
     consoleContent?.classList.add('hidden');
     terminalContent?.classList.add('hidden');
-    previewContent?.classList.add('hidden');
+    if (previewContent) {
+      previewContent.classList.add('pointer-events-none');
+      previewContent.style.opacity = '0';
+      previewContent.style.zIndex = '-1';
+    }
     clearBtn?.classList.add('hidden');
     refreshBtn?.classList.add('hidden');
 
@@ -258,7 +269,11 @@ export class OutputPanel {
         previewBtn.style.background = 'var(--accent-color-subtle)';
         previewBtn.className = 'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm';
       }
-      previewContent?.classList.remove('hidden');
+      if (previewContent) {
+        previewContent.classList.remove('pointer-events-none');
+        previewContent.style.opacity = '1';
+        previewContent.style.zIndex = '0';
+      }
       refreshBtn?.classList.remove('hidden');
       this.refreshPreview();
     }
@@ -344,7 +359,7 @@ export class OutputPanel {
         </div>
       </div>
 
-      <!-- Panel Body -->
+      <!-- Panel Body — position:relative so preview iframe can overlay absolutely -->
       <div class="flex-1 overflow-hidden relative bg-[#000000]">
         <!-- Console View (Text Selection Enabled) -->
         <div id="consoleTabContent" class="h-full overflow-y-auto p-4 font-mono text-xs space-y-2 select-text">
@@ -355,8 +370,9 @@ export class OutputPanel {
         <div id="terminalTabContent" class="h-full w-full hidden bg-[#000000]">
         </div>
 
-        <!-- Preview View -->
-        <div id="previewTabContent" class="h-full w-full hidden">
+        <!-- Preview View — NEVER use display:none (kills iframe document in Chrome/WebView).
+             Instead toggle opacity/pointer-events/z-index to keep the browsing context alive. -->
+        <div id="previewTabContent" class="absolute inset-0 w-full h-full pointer-events-none" style="opacity:0;z-index:-1;">
           <iframe id="previewIframe" class="w-full h-full border-none" sandbox="allow-scripts allow-modals"></iframe>
         </div>
       </div>

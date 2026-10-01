@@ -218,11 +218,16 @@ export class HtmlPreviewBuilder {
 
     const bodyHtml = processedLines.join('\n');
 
+    const cspMeta = allowNetwork
+      ? `<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https: data: blob:; form-action 'none';">`
+      : `<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; form-action 'none';">`;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${cspMeta}
   <title>${this.escapeHtml(title)}</title>
 
   ${hasMath ? `
@@ -448,10 +453,13 @@ export class HtmlPreviewBuilder {
     t = t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/\*(.*?)\*/g, '<em>$1</em>');
     t = t.replace(/~~(.*?)~~/g, '<del>$1</del>');
-    // Links [text](url)
-    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Links [text](url) - strictly validate URL protocol to prevent javascript: XSS
+    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
+      const safeUrl = /^(https?:\/\/|mailto:|#|\/)/i.test(url) ? url : '#';
+      return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    });
     // Raw URLs <http...>
-    t = t.replace(/&lt;(https?:\/\/[^&>]+)&gt;/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    t = t.replace(/&lt;(https?:\/\/[^&>]+)&gt;/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     return t;
   }
 

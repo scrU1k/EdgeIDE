@@ -619,7 +619,9 @@ export class NotebookEditor {
         row.appendChild(img);
       } else if (data['text/html']) {
         const html = Array.isArray(data['text/html']) ? data['text/html'].join('') : String(data['text/html']);
-        row.innerHTML = html;
+        // [P1 Fix] Sanitize HTML output from notebooks to prevent XSS.
+        // Parse into an inert DOMParser document, strip dangerous elements/attrs, then insert.
+        row.appendChild(this.sanitizeNotebookHtml(html));
       } else if (data['text/plain']) {
         const text = Array.isArray(data['text/plain']) ? data['text/plain'].join('') : String(data['text/plain']);
         row.className += ' text-emerald-400 font-mono';
@@ -636,6 +638,43 @@ export class NotebookEditor {
 
   private stripAnsi(text: string): string {
     return text.replace(/\x1b\[[0-9;]*m/g, '');
+  }
+
+  // [P1 Fix] Sanitize untrusted notebook HTML output before DOM insertion.
+  // Uses DOMParser to parse in an inert context, strips dangerous elements and attrs.
+  private sanitizeNotebookHtml(html: string): DocumentFragment {
+    const FORBIDDEN_TAGS = new Set(['script', 'object', 'embed', 'iframe', 'frame', 'frameset', 'form', 'meta', 'base', 'link', 'applet']);
+    const SAFE_URL_RE = /^(https?:\/\/|mailto:|data:image\/|#|\/)/i;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<body>${html}</body>`, 'text/html');
+    const body = doc.body;
+
+    // Walk and strip
+    const walk = (node: Element) => {
+      const toRemove: Element[] = [];
+      for (const child of Array.from(node.children)) {
+        if (FORBIDDEN_TAGS.has(child.tagName.toLowerCase())) {
+          toRemove.push(child);
+          continue;
+        }
+        // Strip all event handler attributes (on*) and unsafe href/src
+        for (const attr of Array.from(child.attributes)) {
+          if (/^on/i.test(attr.name)) {
+            child.removeAttribute(attr.name);
+          } else if ((attr.name === 'href' || attr.name === 'src' || attr.name === 'action') && !SAFE_URL_RE.test(attr.value)) {
+            child.removeAttribute(attr.name);
+          }
+        }
+        walk(child);
+      }
+      toRemove.forEach(el => el.remove());
+    };
+    walk(body);
+
+    const frag = document.createDocumentFragment();
+    while (body.firstChild) frag.appendChild(body.firstChild);
+    return frag;
   }
 
   private renderMarkdownHtml(md: string): string {
@@ -689,7 +728,11 @@ export class NotebookEditor {
     t = t.replace(/`([^`]+)`/g, '<code class="bg-black/40 px-1 py-0.5 rounded text-amber-300 font-mono text-[11px]">$1</code>');
     t = t.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-zinc-100">$1</strong>');
     t = t.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
-    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-indigo-400 underline">$1</a>');
+    // [P1 Fix] Only allow safe URL schemes in Markdown links to prevent javascript: injection
+    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
+      const safeUrl = /^(https?:\/\/|mailto:|#|\/)/i.test(url) ? url : '#';
+      return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-indigo-400 underline">${label}</a>`;
+    });
     return t;
   }
 

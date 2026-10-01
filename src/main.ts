@@ -213,6 +213,21 @@ class MobileApp {
         this.p2pEngine.setInternetRelayAllowed(allowed);
       }
     );
+
+    // 13. [P2 Fix] Sync editor with IndexedDB state on hydration
+    this.vfs.subscribe(() => {
+      const active = this.vfs.getActiveFile();
+      if (!active) return;
+      if (active.id !== this.activeFileId) {
+        this.switchFile(active.id);
+      } else if (!this.vfs.getHasUserEditedSinceStartup()) {
+        if (active.language === 'ipynb' || active.name.toLowerCase().endsWith('.ipynb')) {
+          this.notebookEditor.loadNotebook(active.id, active.content);
+        } else if (this.editor.getContent() !== active.content) {
+          this.editor.setContent(active.content, active.language);
+        }
+      }
+    });
   }
 
   private switchFile(fileId: string): void {

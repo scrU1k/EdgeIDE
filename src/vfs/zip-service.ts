@@ -227,7 +227,15 @@ export class ZipService {
     const settingsEntry = zip.file('.edgeide/settings.json');
     if (settingsEntry && settingsStore) {
       try {
+        // [P2 Fix] Bound settings.json decompression size to 512KB max
+        const settingsUncompressed = (settingsEntry as any)._data?.uncompressedSize;
+        if (typeof settingsUncompressed === 'number' && settingsUncompressed > 512 * 1024) {
+          throw new Error('Settings entry in ZIP exceeds 512KB limit.');
+        }
         const settingsJson = await settingsEntry.async('string');
+        if (settingsJson.length > 512 * 1024) {
+          throw new Error('Settings entry in ZIP exceeds 512KB limit.');
+        }
         const parsed = JSON.parse(settingsJson);
         const cleanSettings = SettingsStore.sanitize(parsed);
         settingsStore.set(cleanSettings);
@@ -243,6 +251,21 @@ export class ZipService {
     // Finding 6: Reject archives exceeding entry limit
     if (entries.length > ZipService.MAX_ZIP_ENTRIES) {
       throw new Error(`ZIP import rejected: Archive contains ${entries.length} files (exceeds limit of ${ZipService.MAX_ZIP_ENTRIES}).`);
+    }
+
+    // [P2 Fix] Pre-check uncompressed sizes from zip entry headers before reading/decompressing contents
+    let headerTotalUncompressed = 0;
+    for (const entry of entries) {
+      const entrySize = (entry as any)._data?.uncompressedSize;
+      if (typeof entrySize === 'number') {
+        if (entrySize > ZipService.MAX_SINGLE_FILE_SIZE) {
+          throw new Error(`ZIP import rejected: File "${entry.name}" header indicates uncompressed size of ${(entrySize / 1024 / 1024).toFixed(1)}MB exceeds maximum allowed file size of 15MB.`);
+        }
+        headerTotalUncompressed += entrySize;
+        if (headerTotalUncompressed > ZipService.MAX_TOTAL_UNCOMPRESSED_SIZE) {
+          throw new Error(`ZIP import rejected: Total uncompressed size indicated by headers exceeds maximum allowed limit of 60MB.`);
+        }
+      }
     }
 
     const totalFiles = entries.length;
@@ -266,7 +289,42 @@ export class ZipService {
       await controller.checkWait();
 
       const entry = entries[i];
-      const content = await entry.async('string');
+      
+      // [P2 Fix] Streaming decompression size check: abort immediately during stream if limits exceeded
+      let content: string;
+      if (typeof (entry as any).internalStream === 'function') {
+        content = await new Promise<string>((resolve, reject) => {
+          let accumulated = 0;
+          const chunks: Uint8Array[] = [];
+          const stream = (entry as any).internalStream('uint8array');
+          stream.on('data', (chunk: Uint8Array) => {
+            accumulated += chunk.length;
+            if (accumulated > ZipService.MAX_SINGLE_FILE_SIZE) {
+              stream.pause();
+              reject(new Error(`ZIP import rejected: File "${entry.name}" exceeds maximum allowed file size of 15MB.`));
+            } else if (cumulativeDecompressedBytes + accumulated > ZipService.MAX_TOTAL_UNCOMPRESSED_SIZE) {
+              stream.pause();
+              reject(new Error(`ZIP import rejected: Total uncompressed size exceeds maximum allowed limit of 60MB.`));
+            } else {
+              chunks.push(chunk);
+            }
+          });
+          stream.on('error', (err: any) => reject(err));
+          stream.on('end', () => {
+            const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+            const full = new Uint8Array(totalLen);
+            let offset = 0;
+            for (const c of chunks) {
+              full.set(c, offset);
+              offset += c.length;
+            }
+            resolve(new TextDecoder('utf-8').decode(full));
+          });
+          stream.resume();
+        });
+      } else {
+        content = await entry.async('string');
+      }
 
       // Finding 6: Reject archives with files exceeding single-file or total decompressed limits (ZIP bomb defense)
       if (content.length > ZipService.MAX_SINGLE_FILE_SIZE) {

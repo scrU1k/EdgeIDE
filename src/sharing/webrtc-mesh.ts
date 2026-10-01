@@ -123,6 +123,15 @@ export class WebRTCMesh {
     this.crypto = new MeshCrypto();
     this.cryptoInitPromise = this.crypto.init();
 
+    // [P1 Fix] Load persisted pinned peer public keys
+    this.pinnedKeysStorageKey = `edgeide_pinned_p2p_keys_${myDeviceId}`;
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(this.pinnedKeysStorageKey) : null;
+      if (raw) {
+        this.pinnedKeys = new Map(Object.entries(JSON.parse(raw)));
+      }
+    } catch { /* storage unavailable */ }
+
     // Check if network is disabled globally
     if (typeof localStorage !== 'undefined') {
       this.internetRelayAllowed = localStorage.getItem('edgeide_allow_network') !== 'false';
@@ -155,13 +164,34 @@ export class WebRTCMesh {
         try { this.mqttWs.close(); } catch {}
         this.mqttWs = null;
       }
-      console.log('[P2P] Internet MQTT relay disconnected. Strict local/hotspot offline mode active.');
+      // [P1/P2 Fix] Also close all peer relay SSE connections so no external
+      // network traffic flows to registered peer relays when Net:Off is active.
+      this.peerRelays.forEach(r => { try { r.close(); } catch {} });
+      this.peerRelays = [];
+      console.log('[P2P] Internet MQTT relay and peer relay SSE connections closed. Strict local/hotspot offline mode active.');
     } else {
       if (!this.mqttWs && !this.isDestroyed) {
         console.log('[P2P] Internet MQTT relay allowed. Connecting...');
         this.initMqttRelay();
       }
     }
+  }
+
+  /**
+   * Returns this device's ECDH public key (Base64) for QR pairing.
+   */
+  public getMyPublicKey(): string | undefined {
+    return this.crypto.myPublicKeyBase64;
+  }
+
+  /**
+   * Explicitly pin a trusted peer's public key (e.g. from an out-of-band QR code scan).
+   * Overwrites any existing pin and persists it to localStorage.
+   */
+  public pinTrustedKey(peerId: string, publicKey: string): void {
+    this.pinnedKeys.set(peerId, publicKey);
+    this.persistPinnedKeys();
+    this.crypto.deriveSharedKey(peerId, publicKey);
   }
 
   private initLocalLanRelay(): void {
@@ -294,7 +324,15 @@ export class WebRTCMesh {
     }
   }
 
+  // [P1 Fix] Persist pinned peer public keys across restarts via localStorage
+  private pinnedKeysStorageKey: string;
   private pinnedKeys: Map<string, string> = new Map();
+
+  private persistPinnedKeys(): void {
+    try {
+      localStorage.setItem(this.pinnedKeysStorageKey, JSON.stringify(Object.fromEntries(this.pinnedKeys)));
+    } catch { /* storage full or unavailable */ }
+  }
 
   private async processIncomingPayload(payload: string): Promise<void> {
     try {
@@ -304,20 +342,22 @@ export class WebRTCMesh {
         const decrypted = await this.crypto.decryptPayload(msg.senderId, msg.encrypted);
         if (decrypted) {
           msg = JSON.parse(decrypted);
+          (msg as any)._wasEncrypted = true;
         } else {
           return;
         }
       }
 
       if (msg.type === 'presence' && msg.publicKey && msg.senderId) {
-        // Finding 3: Key pinning — if we've seen this peer before and the key has changed,
-        // warn and drop the key update to prevent broker-level key substitution attacks.
+        // [P1 Fix] Persistent key pinning: check persisted key first, not just in-memory.
+        // If the announced key differs from the pinned key, drop it to prevent key substitution.
         const existingPinnedKey = this.pinnedKeys.get(msg.senderId);
         if (existingPinnedKey && existingPinnedKey !== msg.publicKey) {
           console.warn(`[P2P] Key mismatch for peer ${msg.senderId} — pinned key differs from announced key. Ignoring new key.`);
         } else {
           if (!existingPinnedKey) {
             this.pinnedKeys.set(msg.senderId, msg.publicKey);
+            this.persistPinnedKeys(); // Persist so pin survives page reload
           }
           await this.crypto.deriveSharedKey(msg.senderId, msg.publicKey);
         }
@@ -381,16 +421,19 @@ export class WebRTCMesh {
 
     try { this.broadcastChannel.postMessage(msg); } catch { /* silent */ }
 
-    this.peerRelayUrls.forEach((relayBase) => {
-      try {
-        fetch(`${relayBase}/api/p2p-relay/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload,
-          mode: 'cors'
-        }).catch(() => { /* silent */ });
-      } catch { /* silent */ }
-    });
+    // [P1/P2 Fix] Only send to remote peer relays when internet relay is allowed.
+    if (this.internetRelayAllowed) {
+      this.peerRelayUrls.forEach((relayBase) => {
+        try {
+          fetch(`${relayBase}/api/p2p-relay/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            mode: 'cors'
+          }).catch(() => { /* silent */ });
+        } catch { /* silent */ }
+      });
+    }
 
     try {
       fetch('/api/p2p-relay/send', {

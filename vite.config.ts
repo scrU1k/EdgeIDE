@@ -483,9 +483,30 @@ function p2pSignalingPlugin(): Plugin {
         }
 
         if (req.url === '/api/p2p-relay/send' && req.method === 'POST') {
+          // [P2 Fix] Bound incoming relay request body size to 1MB to prevent memory exhaustion
+          const MAX_RELAY_BODY = 1024 * 1024;
           let body = '';
-          req.on('data', chunk => { body += chunk; });
+          let received = 0;
+          let tooLarge = false;
+
+          req.on('data', chunk => {
+            if (tooLarge) return;
+            received += chunk.length;
+            if (received > MAX_RELAY_BODY) {
+              tooLarge = true;
+              res.writeHead(413, {
+                'Content-Type': 'application/json',
+                ...(origin ? { 'Access-Control-Allow-Origin': origin } : {})
+              });
+              res.end(JSON.stringify({ error: 'Payload Too Large: maximum 1MB per relay message.' }));
+              req.destroy();
+              return;
+            }
+            body += chunk;
+          });
+
           req.on('end', () => {
+            if (tooLarge) return;
             try {
               const data = JSON.parse(body);
               const eventPayload = `data: ${JSON.stringify(data)}\n\n`;

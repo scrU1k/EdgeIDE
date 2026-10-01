@@ -77,6 +77,10 @@ export class VirtualFileSystem {
   private hasUserEditedSinceStartup: boolean = false;
   private isHydrated: boolean = false;
 
+  public getHasUserEditedSinceStartup(): boolean {
+    return this.hasUserEditedSinceStartup;
+  }
+
   constructor() {
     this.state = this.loadFromStorage();
     this.rebuildIndices();
@@ -116,6 +120,10 @@ export class VirtualFileSystem {
       console.warn('[VFS] IndexedDB initialization note:', err);
     } finally {
       this.isHydrated = true;
+      // [P2 Fix] Notify all VFS subscribers so the file tree, tab bar, and editor
+      // re-render with the authoritative IndexedDB state rather than the earlier
+      // localStorage snapshot that was used to initialize the UI components.
+      this.notify();
     }
   }
 

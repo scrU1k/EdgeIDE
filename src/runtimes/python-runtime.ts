@@ -95,8 +95,12 @@ async function getPyodide() {
       }
     }
 
-    // 2. If not bundled locally, load from CDN
+    // 2. If not bundled locally, load from CDN (only if network is permitted)
     if (!loadedOffline) {
+      if (!networkAllowed) {
+        initPromise = null;
+        throw new Error('Network access is disabled (Net: Off). Cannot load Pyodide from CDN while offline. Bundle Pyodide assets locally in public/pyodide/ or toggle "Net: On" for the initial download.');
+      }
       try {
         importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js");
         

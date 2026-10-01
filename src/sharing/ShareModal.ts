@@ -654,8 +654,8 @@ export class ShareModal {
         </div>
 
         <div>
-          <div class="font-bold text-sm text-zinc-100">${req.senderName}</div>
-          <div class="text-xs text-zinc-400 mt-1">wants to send ${req.files.length} file(s) • <span class="font-mono">${sizeStr}</span></div>
+          <div class="font-bold text-sm text-zinc-100">${this.escapeHtml(req.senderName)}</div>
+          <div class="text-xs text-zinc-400 mt-1">wants to send ${req.files.length} file(s) • <span class="font-mono">${this.escapeHtml(sizeStr)}</span></div>
         </div>
 
         ${req.requiresPin ? `
@@ -919,5 +919,12 @@ export class ShareModal {
     `;
     this.modal.querySelector('#errorCloseBtn')?.addEventListener('click', () => this.close());
     this.modal.querySelector('#errorOkBtn')?.addEventListener('click', () => this.close());
+  }
+  // [P1 Fix] Escape all peer-controlled strings before inserting into innerHTML.
+  // This prevents a forged P2P request from injecting scripts/handlers via senderName etc.
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = String(text ?? '');
+    return div.innerHTML;
   }
 }

@@ -6,6 +6,8 @@ export interface TrustedDevice {
   platform: string;
   addedAt: number;
   lastSeen: number;
+  publicKey?: string;
+  keyFingerprint?: string;
 }
 
 export interface AppSettings {

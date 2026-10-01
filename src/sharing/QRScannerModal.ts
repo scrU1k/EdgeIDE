@@ -8,6 +8,7 @@ export interface ScannedDevice {
   deviceId: string;
   deviceName: string;
   visibility?: string;
+  publicKey?: string;
 }
 
 export class QRScannerModal {
@@ -176,8 +177,14 @@ export class QRScannerModal {
         this.scannedDevice = {
           deviceId: id,
           deviceName: name,
-          visibility: parsed.visibility || 'everyone'
+          visibility: parsed.visibility || 'everyone',
+          publicKey: parsed.publicKey
         };
+
+        // [P1 Fix] Authenticate and pin public key out-of-band via optical QR code
+        if (parsed.publicKey && this.p2pEngine) {
+          this.p2pEngine.pinTrustedPeerKey(id, parsed.publicKey);
+        }
 
         // Register the remote relay URL so we can post messages directly to the scanned device's server
         if (relayUrl && this.p2pEngine) {
@@ -350,8 +357,12 @@ export class QRScannerModal {
           id: this.scannedDevice.deviceId,
           name: this.scannedDevice.deviceName,
           platform: 'Paired via QR',
-          lastSeen: Date.now()
+          lastSeen: Date.now(),
+          publicKey: this.scannedDevice.publicKey
         });
+        if (this.scannedDevice.publicKey && this.p2pEngine) {
+          this.p2pEngine.pinTrustedPeerKey(this.scannedDevice.deviceId, this.scannedDevice.publicKey);
+        }
         this.renderActionSheet();
       }
     });

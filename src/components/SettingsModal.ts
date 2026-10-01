@@ -42,6 +42,7 @@ export class SettingsModal {
   private store: SettingsStore;
   private vfs?: VirtualFileSystem;
   private onResetCallback?: () => void;
+  private p2pEngine?: any;
   private activeTab: 'general' | 'data' | 'share' = 'general';
   private expandedCategories: Set<string> = new Set<string>();
 
@@ -66,6 +67,7 @@ export class SettingsModal {
   ) {
     this.store = store;
     this.vfs = vfs;
+    this.p2pEngine = p2pEngine;
     this.syntaxGuidesModal = new SyntaxGuidesModal(parent);
     this.legalModal = new LegalModal(parent);
     this.onResetCallback = onResetCallback;
@@ -177,12 +179,14 @@ export class SettingsModal {
   private async generateDeviceQr(): Promise<void> {
     const s = this.store.get();
     const relayBase = window.location.origin;
+    const pubKey = this.p2pEngine?.getMyPublicKey();
     const payload = JSON.stringify({
       edgeide: true,
       deviceId: s.deviceId,
       deviceName: s.deviceName,
       visibility: s.sharingVisibility,
-      relayUrl: relayBase
+      relayUrl: relayBase,
+      ...(pubKey ? { publicKey: pubKey } : {})
     });
     this.qrDataUrl = await QRService.generateQRDataUrl(payload, {
       accentColor: s.accentColor,

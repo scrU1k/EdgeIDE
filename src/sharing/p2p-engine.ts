@@ -59,6 +59,14 @@ export class P2PEngine {
     this.vfs = vfs;
     this.mesh = new WebRTCMesh(this.settingsStore.get().deviceId, (data) => this.handleMessage(data));
 
+    // [P1 Fix] Load and pin verified public keys from stored Trusted Devices
+    const trusted = this.settingsStore.get().trustedDevices || [];
+    for (const d of trusted) {
+      if (d.publicKey) {
+        this.mesh.pinTrustedKey(d.id, d.publicKey);
+      }
+    }
+
     this.startHeartbeat();
     this.startPeerPruning();
   }
@@ -99,6 +107,20 @@ export class P2PEngine {
    */
   public setInternetRelayAllowed(allowed: boolean): void {
     this.mesh.setInternetRelayAllowed(allowed);
+  }
+
+  /**
+   * Returns this device's ECDH public key (Base64) for QR pairing.
+   */
+  public getMyPublicKey(): string | undefined {
+    return this.mesh.getMyPublicKey();
+  }
+
+  /**
+   * Explicitly pin a trusted peer's public key (e.g. from an out-of-band QR code scan).
+   */
+  public pinTrustedPeerKey(peerId: string, publicKey: string): void {
+    this.mesh.pinTrustedKey(peerId, publicKey);
   }
 
   private emit(ev: TransferEvent): void {
@@ -338,6 +360,17 @@ export class P2PEngine {
 
         const requiresPin = myVisibility === 'everyone' && !isSenderTrusted;
 
+        // [P2 Fix] Bound pending transfer map: reject if already at limit
+        const MAX_PENDING_TRANSFERS = 5;
+        if (this.pendingChunks.size >= MAX_PENDING_TRANSFERS) {
+          this.mesh.broadcast({
+            type: 'transfer_reject',
+            transferId: data.transferId,
+            reason: 'Too many pending transfers. Try again later.'
+          });
+          return;
+        }
+
         this.activeTransfer = {
           transferId: data.transferId,
           role: 'receiver',
@@ -359,6 +392,16 @@ export class P2PEngine {
           total: 0,
           files: []
         });
+
+        // [P2 Fix] 2-minute TTL: auto-clean this pending entry if never completed
+        setTimeout(() => {
+          if (this.pendingChunks.has(data.transferId)) {
+            this.pendingChunks.delete(data.transferId);
+            if (this.activeTransfer?.transferId === data.transferId) {
+              this.activeTransfer = null;
+            }
+          }
+        }, 120000);
 
         this.emit({
           type: 'incoming_request',
@@ -383,6 +426,7 @@ export class P2PEngine {
 
       case 'transfer_reject': {
         if (!this.activeTransfer || this.activeTransfer.transferId !== data.transferId) return;
+        this.pendingChunks.delete(data.transferId); // [P2 Fix] Clear orphaned pending state
         this.emit({ type: 'transfer_rejected', transferId: data.transferId, reason: data.reason || 'Declined' });
         this.activeTransfer = null;
         break;
@@ -390,6 +434,7 @@ export class P2PEngine {
 
       case 'transfer_cancel': {
         if (!this.activeTransfer || this.activeTransfer.transferId !== data.transferId) return;
+        this.pendingChunks.delete(data.transferId); // [P2 Fix] Clear orphaned pending state
         this.emit({ type: 'transfer_error', transferId: data.transferId, error: 'Transfer was cancelled by remote peer' });
         this.activeTransfer = null;
         break;
@@ -404,6 +449,11 @@ export class P2PEngine {
 
       case 'transfer_chunk': {
         if (!this.activeTransfer || this.activeTransfer.transferId !== data.transferId) return;
+        // [P1 Fix] Reject chunks arriving over unencrypted plaintext transports
+        if (!data._wasEncrypted) {
+          console.warn('[P2P] Rejected plaintext transfer chunk — end-to-end encryption envelope required.');
+          return;
+        }
         this.handleIncomingChunk(data);
         break;
       }
@@ -429,9 +479,12 @@ export class P2PEngine {
         const end = Math.min(start + CHUNK_SIZE, payloadStr.length);
         const chunkData = payloadStr.slice(start, end);
 
+        // [P1 Fix] Bind targetId so the mesh layer encrypts this chunk with AES-GCM
+        // and routes it to the receiver's private inbox topic, not the public discovery topic.
         this.mesh.broadcast({
           type: 'transfer_chunk',
           transferId: this.activeTransfer.transferId,
+          targetId: this.activeTransfer.peerId,
           chunkIndex,
           totalChunks,
           chunkData,
