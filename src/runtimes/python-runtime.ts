@@ -8,6 +8,28 @@ let installedPackages = new Set(['micropip', 'packaging']);
 let stdinQueue = [];
 let networkAllowed = true;
 
+// In web workers, provide dummy document and ImageData so libraries expecting DOM (like matplotlib_pyodide) don't crash
+if (typeof self.document === 'undefined') {
+  self.document = {
+    createElement: function() {
+      return {
+        getContext: function() { return null; },
+        setAttribute: function() {},
+        style: {}
+      };
+    },
+    getElementById: function() { return null; },
+    body: { appendChild: function() {}, removeChild: function() {} }
+  };
+}
+if (typeof self.ImageData === 'undefined') {
+  self.ImageData = function(w, h) {
+    this.width = w || 0;
+    this.height = h || 0;
+    this.data = new Uint8ClampedArray((w || 0) * (h || 0) * 4);
+  };
+}
+
 // Sandbox lockdown: Prevent exfiltration and origin storage access via Pyodide JS interop
 const restrictedKeys = ['indexedDB', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'caches', 'Worker', 'SharedWorker'];
 for (const key of restrictedKeys) {
@@ -194,36 +216,36 @@ onmessage = async (e) => {
         await py.loadPackagesFromImports(code);
       } catch (loadErr) {}
 
-      // Ensure matplotlib setup is active if matplotlib was imported
-      try {
-        await py.runPythonAsync(
-          "if 'matplotlib' in sys.modules:\\n" +
+      // Prepend matplotlib setup directly into user code execution to guarantee backend is Agg before any plot imports
+      let codeToExecute = code;
+      if (/import\s+matplotlib|from\s+matplotlib/m.test(code)) {
+        codeToExecute = 
+          "import sys, io, os, base64\\n" +
+          "os.environ['MPLBACKEND'] = 'Agg'\\n" +
+          "try:\\n" +
           "    import matplotlib\\n" +
           "    matplotlib.use('Agg')\\n" +
           "    import matplotlib.pyplot as plt\\n" +
-          "    if not hasattr(plt.show, '_edgeide_hooked'):\\n" +
-          "        _orig_show = plt.show\\n" +
-          "        def _custom_show(*args, **kwargs):\\n" +
-          "            try:\\n" +
-          "                figures = [plt.figure(i) for i in plt.get_fignums()]\\n" +
-          "                if not figures and plt.get_fignums():\\n" +
-          "                    figures = [plt.gcf()]\\n" +
-          "                for fig in figures:\\n" +
-          "                    buf = io.BytesIO()\\n" +
-          "                    fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)\\n" +
-          "                    buf.seek(0)\\n" +
-          "                    img_b64 = base64.b64encode(buf.read()).decode('ascii')\\n" +
-          "                    print('\\n__EDGEIDE_IMAGE_PNG__' + img_b64 + '__EDGEIDE_IMAGE_END__\\n')\\n" +
-          "                    plt.close(fig)\\n" +
-          "            except Exception as e:\\n" +
-          "                print(f'[Matplotlib rendering notice: {e}]', file=sys.stderr)\\n" +
-          "        _custom_show._edgeide_hooked = True\\n" +
-          "        plt.show = _custom_show\\n"
-        );
-      } catch (mplHookErr) {}
+          "    def _edgeide_show(*args, **kwargs):\\n" +
+          "        try:\\n" +
+          "            for _fnum in plt.get_fignums():\\n" +
+          "                _fig = plt.figure(_fnum)\\n" +
+          "                _buf = io.BytesIO()\\n" +
+          "                _fig.savefig(_buf, format='png', bbox_inches='tight', dpi=100)\\n" +
+          "                _buf.seek(0)\\n" +
+          "                _b64 = base64.b64encode(_buf.read()).decode('ascii')\\n" +
+          "                print('\\n__EDGEIDE_IMAGE_PNG__' + _b64 + '__EDGEIDE_IMAGE_END__\\n')\\n" +
+          "                plt.close(_fig)\\n" +
+          "        except Exception as _e:\\n" +
+          "            print(f'[Matplotlib rendering: {_e}]', file=sys.stderr)\\n" +
+          "    plt.show = _edgeide_show\\n" +
+          "except Exception:\\n" +
+          "    pass\\n" +
+          code;
+      }
 
       // Execute Python asynchronously in background worker thread
-      const result = await py.runPythonAsync(code);
+      const result = await py.runPythonAsync(codeToExecute);
       const executionTimeMs = performance.now() - startTime;
 
       let resultStr = null;
