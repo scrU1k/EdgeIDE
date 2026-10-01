@@ -210,8 +210,11 @@ export class NotebookEditor {
     }
   }
 
-  public renderAll(): void {
+  public renderAll(targetCellToScroll?: string): void {
     if (!this.notebook) return;
+
+    // Preserve scroll position so actions do not snap the viewport to the top of the notebook
+    const previousScrollTop = this.cellsContainer.scrollTop;
 
     // Clean up previous CodeMirror views
     for (const view of this.cellViews.values()) {
@@ -227,6 +230,17 @@ export class NotebookEditor {
       const cellEl = this.createCellElement(cell, i);
       this.cellsContainer.appendChild(cellEl);
     }
+
+    if (targetCellToScroll) {
+      const el = this.cellsContainer.querySelector(`[data-cell-id="${targetCellToScroll}"]`) as HTMLElement;
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+    }
+
+    // Restore previous scroll position immediately
+    this.cellsContainer.scrollTop = previousScrollTop;
   }
 
   private createCellElement(cell: NotebookCell, _index: number): HTMLElement {
@@ -277,27 +291,99 @@ export class NotebookEditor {
       counterBadge.textContent = '';
     }
 
-    // Cell Type Selector (Code, Markdown, Raw)
-    const typeSelect = document.createElement('select');
-    typeSelect.className = 'bg-[#09090d] text-zinc-300 text-[11px] font-mono rounded-lg px-2 py-1 border border-white/10 focus:outline-none focus:border-indigo-500 cursor-pointer';
-    typeSelect.innerHTML = `
-      <option value="code" ${cell.cell_type === 'code' ? 'selected' : ''}>Code (Python)</option>
-      <option value="markdown" ${cell.cell_type === 'markdown' ? 'selected' : ''}>Markdown</option>
-      <option value="raw" ${cell.cell_type === 'raw' ? 'selected' : ''}>Raw Text</option>
-    `;
-    typeSelect.addEventListener('change', () => {
-      const newType = typeSelect.value as NotebookCellType;
-      cell.cell_type = newType;
-      if (newType === 'markdown') {
-        cell.rendered = true;
+    // Cell Type Selector (Native Styled Dropdown: Code, Markdown, Raw)
+    const typeDropdown = document.createElement('div');
+    typeDropdown.className = 'relative inline-block';
+
+    const getFormatLabel = (t: NotebookCellType) => {
+      switch (t) {
+        case 'code': return 'Code (Python)';
+        case 'markdown': return 'Markdown';
+        case 'raw': return 'Raw Text';
       }
-      this.debounceSave();
-      this.renderAll();
+    };
+
+    const getFormatColor = (t: NotebookCellType) => {
+      switch (t) {
+        case 'code': return 'text-indigo-400 bg-indigo-500/15 border-indigo-500/30';
+        case 'markdown': return 'text-cyan-400 bg-cyan-500/15 border-cyan-500/30';
+        case 'raw': return 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+      }
+    };
+
+    const typeBtn = document.createElement('button');
+    typeBtn.type = 'button';
+    typeBtn.className = `flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono border active:scale-95 transition-all ${getFormatColor(cell.cell_type)}`;
+    typeBtn.innerHTML = `
+      <span>${getFormatLabel(cell.cell_type)}</span>
+      <svg class="w-3 h-3 text-zinc-400 transition-transform duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+      </svg>
+    `;
+
+    const typeMenu = document.createElement('div');
+    typeMenu.className = 'absolute top-full left-0 mt-1 py-1 w-36 bg-[#14141c] border border-white/10 rounded-xl shadow-2xl z-30 hidden space-y-0.5';
+
+    const options: { type: NotebookCellType; label: string; desc: string; dotColor: string }[] = [
+      { type: 'code', label: 'Code', desc: 'Python 3.12 (Pyodide)', dotColor: 'bg-indigo-400' },
+      { type: 'markdown', label: 'Markdown', desc: 'Formatted notes & docs', dotColor: 'bg-cyan-400' },
+      { type: 'raw', label: 'Raw Text', desc: 'Unformatted plain text', dotColor: 'bg-amber-400' }
+    ];
+
+    options.forEach(opt => {
+      const optBtn = document.createElement('button');
+      optBtn.type = 'button';
+      optBtn.className = `w-full px-2.5 py-1.5 flex items-center gap-2 text-left hover:bg-white/5 transition-colors ${
+        cell.cell_type === opt.type ? 'bg-white/10 font-bold' : ''
+      }`;
+      optBtn.innerHTML = `
+        <span class="w-2 h-2 rounded-full ${opt.dotColor} shrink-0"></span>
+        <div class="min-w-0">
+          <div class="text-[11px] font-mono text-zinc-200">${opt.label}</div>
+          <div class="text-[9px] text-zinc-500 leading-none">${opt.desc}</div>
+        </div>
+      `;
+
+      optBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        cell.cell_type = opt.type;
+        if (opt.type === 'markdown') {
+          cell.rendered = true;
+        }
+        typeMenu.classList.add('hidden');
+        this.debounceSave();
+        this.renderAll(cell.id);
+      });
+
+      typeMenu.appendChild(optBtn);
     });
+
+    typeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = typeMenu.classList.contains('hidden');
+      // Close other open type menus in notebook
+      document.querySelectorAll('.notebook-cell .type-menu-open').forEach(el => el.classList.add('hidden'));
+      if (isHidden) {
+        typeMenu.classList.remove('hidden');
+        typeMenu.classList.add('type-menu-open');
+      } else {
+        typeMenu.classList.add('hidden');
+        typeMenu.classList.remove('type-menu-open');
+      }
+    });
+
+    // Close when clicking outside
+    document.addEventListener('click', () => {
+      typeMenu.classList.add('hidden');
+      typeMenu.classList.remove('type-menu-open');
+    });
+
+    typeDropdown.appendChild(typeBtn);
+    typeDropdown.appendChild(typeMenu);
 
     leftControls.appendChild(runBtn);
     leftControls.appendChild(counterBadge);
-    leftControls.appendChild(typeSelect);
+    leftControls.appendChild(typeDropdown);
 
     // Right: Action buttons (Move Up, Move Down, Add Above, Add Below, Delete)
     const rightControls = document.createElement('div');
@@ -317,6 +403,25 @@ export class NotebookEditor {
     moveDownBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>`;
     moveDownBtn.addEventListener('click', () => this.moveCell(cell.id, 1));
 
+    // Copy Cell Input
+    const copyCellInputBtn = document.createElement('button');
+    copyCellInputBtn.className = 'p-1 rounded-lg hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-emerald-400 transition-colors';
+    copyCellInputBtn.title = 'Copy cell input';
+    copyCellInputBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>`;
+    copyCellInputBtn.addEventListener('click', async () => {
+      try {
+        const textToCopy = cell.source || '';
+        await navigator.clipboard.writeText(textToCopy);
+        const origIcon = copyCellInputBtn.innerHTML;
+        copyCellInputBtn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>`;
+        setTimeout(() => {
+          copyCellInputBtn.innerHTML = origIcon;
+        }, 1200);
+      } catch (err) {
+        console.warn('Failed to copy cell input:', err);
+      }
+    });
+
     // Add Below (+)
     const addBelowBtn = document.createElement('button');
     addBelowBtn.className = 'p-1 rounded-lg hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-indigo-400';
@@ -333,6 +438,7 @@ export class NotebookEditor {
 
     rightControls.appendChild(moveUpBtn);
     rightControls.appendChild(moveDownBtn);
+    rightControls.appendChild(copyCellInputBtn);
     rightControls.appendChild(addBelowBtn);
     rightControls.appendChild(deleteBtn);
 
@@ -423,17 +529,58 @@ export class NotebookEditor {
       const outputContainer = document.createElement('div');
       outputContainer.className = 'cell-outputs border-t border-white/5 px-3 py-2 bg-[#09090f] rounded-b-2xl font-mono text-xs space-y-1.5 relative group/out';
 
+      // Output action buttons container (Copy + Clear)
+      const outActions = document.createElement('div');
+      outActions.className = 'absolute top-2 right-2 flex items-center gap-1 opacity-80 group-hover/out:opacity-100 transition-opacity z-10';
+
+      // Copy whole cell output button
+      const copyOutBtn = document.createElement('button');
+      copyOutBtn.className = 'p-1 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-emerald-400 transition-colors';
+      copyOutBtn.title = 'Copy cell output';
+      copyOutBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>`;
+      copyOutBtn.addEventListener('click', async () => {
+        try {
+          const textPieces: string[] = [];
+          for (const o of cell.outputs) {
+            if (o.output_type === 'stream') {
+              textPieces.push(Array.isArray(o.text) ? o.text.join('') : String(o.text || ''));
+            } else if (o.output_type === 'execute_result' || o.output_type === 'display_data') {
+              if (o.data && o.data['text/plain']) {
+                textPieces.push(Array.isArray(o.data['text/plain']) ? o.data['text/plain'].join('') : String(o.data['text/plain']));
+              }
+            } else if (o.output_type === 'error') {
+              const tb = Array.isArray(o.traceback) ? o.traceback.join('\n') : (o.evalue || 'Error');
+              textPieces.push(this.stripAnsi(tb));
+            }
+          }
+          const textToCopy = textPieces.join('\n').trim();
+          if (textToCopy) {
+            await navigator.clipboard.writeText(textToCopy);
+            const origIcon = copyOutBtn.innerHTML;
+            copyOutBtn.innerHTML = `<svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>`;
+            setTimeout(() => {
+              copyOutBtn.innerHTML = origIcon;
+            }, 1200);
+          }
+        } catch (err) {
+          console.warn('Failed to copy output:', err);
+        }
+      });
+
       // Clear single cell output button
       const clearOutBtn = document.createElement('button');
-      clearOutBtn.className = 'absolute top-2 right-2 p-1 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-zinc-200 opacity-0 group-hover/out:opacity-100 transition-opacity';
+      clearOutBtn.className = 'p-1 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-red-400 transition-colors';
       clearOutBtn.title = 'Clear output';
-      clearOutBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
+      clearOutBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
       clearOutBtn.addEventListener('click', () => {
         cell.outputs = [];
         this.debounceSave();
         this.renderAll();
       });
-      outputContainer.appendChild(clearOutBtn);
+
+      outActions.appendChild(copyOutBtn);
+      outActions.appendChild(clearOutBtn);
+      outputContainer.appendChild(outActions);
 
       for (const out of cell.outputs) {
         const outRow = this.createOutputRow(out);
@@ -611,11 +758,29 @@ export class NotebookEditor {
         inputs
       );
 
-      if (stdoutBuf.length > 0) {
+      let fullStdout = stdoutBuf.join('');
+      const imgRegex = /__EDGEIDE_IMAGE_PNG__([A-Za-z0-9+/=]+)__EDGEIDE_IMAGE_END__/g;
+      let imgMatch;
+      const images: string[] = [];
+      while ((imgMatch = imgRegex.exec(fullStdout)) !== null) {
+        images.push(imgMatch[1]);
+      }
+      fullStdout = fullStdout.replace(/__EDGEIDE_IMAGE_PNG__[A-Za-z0-9+/=]+__EDGEIDE_IMAGE_END__/g, '').trim();
+
+      if (fullStdout.length > 0) {
         cell.outputs.push({
           output_type: 'stream',
           name: 'stdout',
-          text: stdoutBuf.join('')
+          text: fullStdout
+        });
+      }
+
+      for (const imgB64 of images) {
+        cell.outputs.push({
+          output_type: 'display_data',
+          data: {
+            'image/png': imgB64
+          }
         });
       }
 
@@ -709,7 +874,7 @@ export class NotebookEditor {
     const newCell = createCell(type, '');
     this.notebook.cells.push(newCell);
     this.debounceSave();
-    this.renderAll();
+    this.renderAll(newCell.id);
     this.focusCell(newCell.id);
   }
 
@@ -723,7 +888,7 @@ export class NotebookEditor {
       this.notebook.cells.push(newCell);
     }
     this.debounceSave();
-    this.renderAll();
+    this.renderAll(newCell.id);
     this.focusCell(newCell.id);
   }
 
@@ -737,7 +902,7 @@ export class NotebookEditor {
     const cell = this.notebook.cells.splice(idx, 1)[0];
     this.notebook.cells.splice(newIdx, 0, cell);
     this.debounceSave();
-    this.renderAll();
+    this.renderAll(cell.id);
   }
 
   public deleteCell(cellId: string): void {
@@ -759,6 +924,7 @@ export class NotebookEditor {
     setTimeout(() => {
       const view = this.cellViews.get(cellId);
       if (view) {
+        // Prevent default browser scroll jumps when focusing the editor
         view.focus();
       }
     }, 50);

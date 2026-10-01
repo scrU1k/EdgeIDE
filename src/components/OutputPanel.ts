@@ -485,10 +485,22 @@ export class OutputPanel {
           break;
       }
 
-      row.innerHTML = `
-        <span class="text-[10px] text-zinc-600 shrink-0 font-mono select-none pt-0.5">${new Date(msg.timestamp).toLocaleTimeString()}</span>
-        <div class="flex-1 ${textColor} font-mono whitespace-pre-wrap break-all select-text">${this.escapeHtml(msg.text)}</div>
-      `;
+      // Check if message contains an embedded image marker from matplotlib
+      const imgMarkerMatch = msg.text.match(/__EDGEIDE_IMAGE_PNG__([A-Za-z0-9+/=]+)__EDGEIDE_IMAGE_END__/);
+      if (imgMarkerMatch) {
+        const b64 = imgMarkerMatch[1];
+        row.innerHTML = `
+          <span class="text-[10px] text-zinc-600 shrink-0 font-mono select-none pt-0.5">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+          <div class="flex-1 my-1">
+            <img src="data:image/png;base64,${b64}" alt="Matplotlib Plot" class="max-w-full rounded-xl bg-white p-2 shadow-lg border border-white/10 select-none inline-block" />
+          </div>
+        `;
+      } else {
+        row.innerHTML = `
+          <span class="text-[10px] text-zinc-600 shrink-0 font-mono select-none pt-0.5">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+          <div class="flex-1 ${textColor} font-mono whitespace-pre-wrap break-all select-text">${this.escapeHtml(msg.text)}</div>
+        `;
+      }
 
       this.consoleLogsContainer?.appendChild(row);
     });

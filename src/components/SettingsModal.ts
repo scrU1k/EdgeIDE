@@ -5,6 +5,7 @@ import { VirtualFileSystem } from '../vfs/vfs';
 import { QRService } from '../sharing/qr-service';
 import { QRScannerModal } from '../sharing/QRScannerModal';
 import { SyntaxGuidesModal } from './SyntaxGuidesModal';
+import { LegalModal } from './LegalModal';
 import { ZipService, ZipTaskController, ZipProgress } from '../vfs/zip-service';
 
 export const CODE_SYNTAX_THEMES = [
@@ -50,6 +51,8 @@ export class SettingsModal {
   private qrDataUrl: string | null = null;
   public qrScannerModal: QRScannerModal;
   public syntaxGuidesModal: SyntaxGuidesModal;
+  public legalModal: LegalModal;
+  private isVisibilityDropdownOpen: boolean = false;
   private activeZipController: ZipTaskController | null = null;
   private currentZipProgress: ZipProgress | null = null;
 
@@ -64,6 +67,7 @@ export class SettingsModal {
     this.store = store;
     this.vfs = vfs;
     this.syntaxGuidesModal = new SyntaxGuidesModal(parent);
+    this.legalModal = new LegalModal(parent);
     this.onResetCallback = onResetCallback;
 
     this.container = document.createElement('div');
@@ -200,9 +204,18 @@ export class SettingsModal {
     this.modal.innerHTML = `
       <!-- Modal Header -->
       <div class="settings-modal-header flex items-center justify-between px-5 py-3.5 bg-[#0c0c0f] border-b border-white/5 shrink-0">
-        <div class="flex items-center gap-2">
-          <span style="color: var(--accent-color);">${Icons.settings}</span>
-          <h2 class="font-bold text-sm text-zinc-100">Preferences</h2>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <span style="color: var(--accent-color);">${Icons.settings}</span>
+            <h2 class="font-bold text-sm text-zinc-100">Preferences</h2>
+          </div>
+          <!-- Privacy and Terms Button -->
+          <button id="openLegalModalBtn" type="button" title="View Privacy Policy and Terms of Service" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-zinc-200 transition-all border border-white/5 text-[11px] font-medium">
+            <svg class="w-3.5 h-3.5 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Privacy and Terms</span>
+          </button>
         </div>
         <button id="settingsCloseBtn" class="p-1.5 rounded-xl hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 transition-all">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -479,14 +492,59 @@ export class SettingsModal {
         </div>
       </div>
 
-      <!-- Sharing Visibility Dropdown Selector -->
-      <div>
+      <!-- Sharing Visibility Custom Dropdown Selector -->
+      <div class="relative">
         <label class="block font-semibold text-zinc-200 mb-1.5">Sharing Visibility</label>
-        <select id="sharingVisibilitySelect" class="settings-dropdown w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs focus:outline-none focus:border-indigo-500 transition-colors">
-          <option value="everyone" ${s.sharingVisibility === 'everyone' ? 'selected' : ''}>Everyone (4-Digit PIN Required)</option>
-          <option value="trusted" ${s.sharingVisibility === 'trusted' ? 'selected' : ''}>Trusted Devices Only (1-Tap Prompt)</option>
-          <option value="offline" ${s.sharingVisibility === 'offline' ? 'selected' : ''}>Offline (QR Scan Only)</option>
-        </select>
+        <button id="visibilityDropdownTrigger" type="button" class="settings-dropdown-trigger w-full px-3.5 py-2.5 rounded-xl bg-[#141418] border border-white/10 text-zinc-200 font-medium text-xs flex items-center justify-between hover:bg-white/5 transition-all">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full shrink-0 ${
+              s.sharingVisibility === 'offline' ? 'bg-zinc-500' : s.sharingVisibility === 'trusted' ? 'bg-amber-400' : 'bg-emerald-400'
+            }"></span>
+            <span id="currentVisibilityLabel" class="font-semibold text-zinc-100 truncate">
+              ${s.sharingVisibility === 'everyone' ? 'Everyone (4-Digit PIN Required)' : s.sharingVisibility === 'trusted' ? 'Trusted Devices Only (1-Tap Prompt)' : 'Offline (QR Scan Only)'}
+            </span>
+          </div>
+          <svg id="visibilityDropdownChevron" class="w-4 h-4 text-zinc-400 transform transition-transform duration-150 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+
+        <!-- Visibility Dropdown Menu Options -->
+        <div id="visibilityDropdownMenu" class="settings-dropdown-menu absolute top-full left-0 right-0 mt-1.5 rounded-xl bg-[#141418] border border-white/10 shadow-2xl p-1.5 space-y-1 z-50 hidden">
+          <button type="button" data-visibility-val="everyone" class="visibility-option-btn w-full p-2.5 rounded-lg flex items-center justify-between text-left transition-colors ${
+            s.sharingVisibility === 'everyone' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+          }">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>
+              <div>
+                <div class="text-xs text-zinc-200">Everyone</div>
+                <div class="text-[10px] text-zinc-400">4-Digit PIN required on transfer</div>
+              </div>
+            </div>
+          </button>
+          <button type="button" data-visibility-val="trusted" class="visibility-option-btn w-full p-2.5 rounded-lg flex items-center justify-between text-left transition-colors ${
+            s.sharingVisibility === 'trusted' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+          }">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>
+              <div>
+                <div class="text-xs text-zinc-200">Trusted Devices Only</div>
+                <div class="text-[10px] text-zinc-400">1-Tap prompt for paired devices</div>
+              </div>
+            </div>
+          </button>
+          <button type="button" data-visibility-val="offline" class="visibility-option-btn w-full p-2.5 rounded-lg flex items-center justify-between text-left transition-colors ${
+            s.sharingVisibility === 'offline' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+          }">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-zinc-500 shrink-0"></span>
+              <div>
+                <div class="text-xs text-zinc-200">Offline</div>
+                <div class="text-[10px] text-zinc-400">Direct QR code scan transfers only</div>
+              </div>
+            </div>
+          </button>
+        </div>
       </div>
 
       <!-- Trusted Devices Whitelist -->
@@ -939,11 +997,33 @@ export class SettingsModal {
       this.showEnlargedQrModal();
     });
 
-    const visibilitySelect = this.modal.querySelector('#sharingVisibilitySelect') as HTMLSelectElement;
-    visibilitySelect?.addEventListener('change', () => {
-      const val = visibilitySelect.value as SharingVisibility;
-      this.store.set({ sharingVisibility: val });
-      this.generateDeviceQr();
+    // Open Privacy and Terms Modal
+    this.modal.querySelector('#openLegalModalBtn')?.addEventListener('click', () => {
+      this.legalModal.open('privacy');
+    });
+
+    // Custom Visibility Dropdown Trigger
+    const visibilityTrigger = this.modal.querySelector('#visibilityDropdownTrigger');
+    visibilityTrigger?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.isVisibilityDropdownOpen = !this.isVisibilityDropdownOpen;
+      this.isAccentDropdownOpen = false;
+      this.isCodeThemeDropdownOpen = false;
+      this.isFontDropdownOpen = false;
+      this.syncDropdownVisibility();
+    });
+
+    this.modal.querySelectorAll('.visibility-option-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const val = btn.getAttribute('data-visibility-val') as SharingVisibility;
+        if (val) {
+          this.store.set({ sharingVisibility: val });
+          this.generateDeviceQr();
+          this.isVisibilityDropdownOpen = false;
+          this.render();
+        }
+      });
     });
 
     this.modal.querySelectorAll('.remove-trusted-btn').forEach(btn => {
@@ -958,10 +1038,11 @@ export class SettingsModal {
 
     // Close dropdowns on modal body click
     this.modal.addEventListener('click', () => {
-      if (this.isAccentDropdownOpen || this.isCodeThemeDropdownOpen || this.isFontDropdownOpen) {
+      if (this.isAccentDropdownOpen || this.isCodeThemeDropdownOpen || this.isFontDropdownOpen || this.isVisibilityDropdownOpen) {
         this.isAccentDropdownOpen = false;
         this.isCodeThemeDropdownOpen = false;
         this.isFontDropdownOpen = false;
+        this.isVisibilityDropdownOpen = false;
         this.syncDropdownVisibility();
       }
     });
@@ -1009,6 +1090,18 @@ export class SettingsModal {
       } else {
         fontMenu.classList.add('hidden');
         fontChevron.classList.remove('rotate-180');
+      }
+    }
+
+    const visibilityMenu = this.modal.querySelector('#visibilityDropdownMenu');
+    const visibilityChevron = this.modal.querySelector('#visibilityDropdownChevron');
+    if (visibilityMenu && visibilityChevron) {
+      if (this.isVisibilityDropdownOpen) {
+        visibilityMenu.classList.remove('hidden');
+        visibilityChevron.classList.add('rotate-180');
+      } else {
+        visibilityMenu.classList.add('hidden');
+        visibilityChevron.classList.remove('rotate-180');
       }
     }
   }
