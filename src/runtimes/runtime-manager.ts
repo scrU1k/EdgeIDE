@@ -53,7 +53,8 @@ export class RuntimeManager {
     code: string,
     language: SupportedLanguage,
     vfs: VirtualFileSystem,
-    onOutput: (msg: ConsoleMessage) => void
+    onOutput: (msg: ConsoleMessage) => void,
+    inputs?: string[]
   ): Promise<ExecutionResult> {
     const runtime = this.getRuntimeForLanguage(language);
     if (!runtime) {
@@ -75,7 +76,7 @@ export class RuntimeManager {
     this.setStatus({ state: 'running', message: `Running selection in ${runtime.name}...` });
 
     try {
-      const result = await runtime.run(code, vfs, onOutput);
+      const result = await runtime.run(code, vfs, onOutput, inputs);
       this.setStatus({ state: result.success ? 'idle' : 'error', message: result.error });
       return result;
     } catch (e: any) {
@@ -97,7 +98,8 @@ export class RuntimeManager {
 
   public async executeActiveFile(
     vfs: VirtualFileSystem,
-    onOutput: (msg: ConsoleMessage) => void
+    onOutput: (msg: ConsoleMessage) => void,
+    inputs?: string[]
   ): Promise<ExecutionResult> {
     const activeFile = vfs.getActiveFile();
     if (!activeFile) {
@@ -195,7 +197,7 @@ export class RuntimeManager {
     this.setStatus({ state: 'running', message: `Running ${runtime.name}...` });
 
     try {
-      const result = await runtime.run(activeFile.content, vfs, onOutput);
+      const result = await runtime.run(activeFile.content, vfs, onOutput, inputs);
       this.setStatus({ state: result.success ? 'idle' : 'error', message: result.error });
       return result;
     } catch (e: any) {

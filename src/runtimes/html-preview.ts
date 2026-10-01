@@ -2,22 +2,26 @@ import { VirtualFileSystem } from '../vfs/vfs';
 import { VirtualNode } from '../vfs/types';
 
 export class HtmlPreviewBuilder {
-  public static buildBundle(vfs: VirtualFileSystem, targetFileId?: string, allowNetwork: boolean = false): string {
+  public static buildBundle(vfs: VirtualFileSystem, targetFileId?: string, allowNetwork: boolean = false, isLight: boolean = false): string {
     const activeFile = vfs.getActiveFile();
-    let htmlFile: VirtualNode | undefined;
+    let targetNode: VirtualNode | undefined;
 
     if (targetFileId) {
       const node = vfs.getNode(targetFileId);
-      if (node && !node.isFolder) htmlFile = node;
+      if (node && !node.isFolder) targetNode = node;
     }
 
-    // 0. If active file is a Note format (.md, .txt, .org, .rst, .adoc, .log, .todo), compile to clean responsive interactive HTML preview
-    if (!htmlFile && activeFile && (
-      ['markdown', 'org', 'rst', 'adoc', 'log', 'todo', 'plaintext'].includes(activeFile.language) ||
-      /\.(md|markdown|txt|org|rst|adoc|asciidoc|log|todo|task)$/i.test(activeFile.name)
+    const effectiveFile = targetNode || activeFile;
+
+    // 0. If effective file is a Note/Markdown format, compile to clean responsive interactive HTML preview
+    if (effectiveFile && (
+      ['markdown', 'org', 'rst', 'adoc', 'log', 'todo', 'plaintext'].includes(effectiveFile.language) ||
+      /\.(md|markdown|txt|org|rst|adoc|asciidoc|log|todo|task)$/i.test(effectiveFile.name)
     )) {
-      return this.renderMarkdown(activeFile.name, activeFile.content);
+      return this.renderMarkdown(effectiveFile.name, effectiveFile.content, isLight, allowNetwork);
     }
+
+    let htmlFile: VirtualNode | undefined = targetNode;
 
     // 1. If active file is HTML, preview that exact file
     if (!htmlFile && activeFile && (activeFile.language === 'html' || activeFile.name.toLowerCase().endsWith('.html'))) {
@@ -115,9 +119,12 @@ export class HtmlPreviewBuilder {
     return htmlContent;
   }
 
-  public static renderMarkdown(title: string, md: string): string {
+  public static renderMarkdown(title: string, md: string, isLight: boolean = false, allowNetwork: boolean = false): string {
     const rawLines = md.split('\n');
     const processedLines: string[] = [];
+
+    const hasMath = allowNetwork && (md.includes('$$') || /\$[^$\n]+\$/.test(md));
+    const hasMermaid = allowNetwork && md.includes('```mermaid');
 
     let inCodeBlock = false;
     let codeBlockLang = '';
@@ -217,24 +224,43 @@ export class HtmlPreviewBuilder {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${this.escapeHtml(title)}</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src data: https: blob:; connect-src 'none'; form-action 'none';">
 
+  ${hasMath ? `
   <!-- KaTeX Math Rendering -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" crossorigin="anonymous"
     onload="if(window.renderMathInElement){ renderMathInElement(document.body, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false }); }"></script>
+  ` : ''}
 
+  ${hasMermaid ? `
   <!-- Mermaid Diagrams Rendering -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.4.0/dist/mermaid.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mermaid@10.4.0/dist/mermaid.min.js"></script>
+  ` : ''}
 
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: ${isLight ? 'light' : 'dark'};
+      --bg: ${isLight ? '#ffffff' : '#09090b'};
+      --text: ${isLight ? '#0f172a' : '#f1f5f9'};
+      --h1: ${isLight ? '#312e81' : '#a5b4fc'};
+      --h2: ${isLight ? '#4338ca' : '#818cf8'};
+      --h3: ${isLight ? '#4f46e5' : '#c7d2fe'};
+      --border: ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'};
+      --code-bg: ${isLight ? '#f8fafc' : '#141418'};
+      --code-border: ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'};
+      --code-header: ${isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.03)'};
+      --code-text: ${isLight ? '#0f172a' : '#e2e8f0'};
+      --inline-code-bg: ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)'};
+      --inline-code-text: ${isLight ? '#db2777' : '#f472b6'};
+      --quote-bg: ${isLight ? 'rgba(99,102,241,0.08)' : 'rgba(129,140,248,0.06)'};
+      --quote-text: ${isLight ? '#334155' : '#cbd5e1'};
+    }
     body {
       margin: 0;
       padding: 24px 20px 80px;
-      background: #09090b;
-      color: #f1f5f9;
+      background: var(--bg);
+      color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       line-height: 1.7;
       font-size: 15px;
@@ -242,42 +268,61 @@ export class HtmlPreviewBuilder {
       margin: 0 auto;
     }
     h1, h2, h3, h4 {
-      color: #f8fafc;
+      color: var(--text);
       margin-top: 1.5em;
       margin-bottom: 0.5em;
       font-weight: 700;
       line-height: 1.3;
     }
-    h1 { font-size: 24px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; color: #a5b4fc; }
-    h2 { font-size: 20px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; color: #818cf8; }
-    h3 { font-size: 17px; color: #c7d2fe; }
+    h1 { font-size: 24px; border-bottom: 1px solid var(--border); padding-bottom: 8px; color: var(--h1); }
+    h2 { font-size: 20px; border-bottom: 1px solid var(--border); padding-bottom: 6px; color: var(--h2); }
+    h3 { font-size: 17px; color: var(--h3); }
     p { margin: 0.8em 0; }
-    a { color: #38bdf8; text-decoration: underline; text-underline-offset: 2px; }
-    a:hover { color: #7dd3fc; }
+    a { color: #0284c7; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: #38bdf8; }
     blockquote {
-      border-left: 3.5px solid #818cf8;
+      border-left: 3.5px solid var(--h2);
       padding: 4px 16px;
       margin: 1em 0;
-      background: rgba(129, 140, 248, 0.06);
+      background: var(--quote-bg);
       border-radius: 0 8px 8px 0;
-      color: #cbd5e1;
+      color: var(--quote-text);
     }
     .code-block {
-      background: #141418;
-      border: 1px solid rgba(255,255,255,0.08);
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
       border-radius: 12px;
       margin: 1.2em 0;
       overflow: hidden;
     }
     .code-header {
-      background: rgba(255,255,255,0.03);
+      background: var(--code-header);
       padding: 4px 12px;
       font-size: 11px;
       font-family: monospace;
       color: #94a3b8;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      border-bottom: 1px solid var(--code-border);
       text-transform: uppercase;
     }
+    pre {
+      margin: 0;
+      padding: 14px;
+      overflow-x: auto;
+      font-family: 'Fira Code', Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--code-text);
+    }
+    .inline-code {
+      background: var(--inline-code-bg);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--inline-code-text);
+    }
+    ul, ol { padding-left: 24px; margin: 0.8em 0; }
+    li { margin: 0.3em 0; }
     pre {
       margin: 0;
       padding: 14px;
@@ -386,7 +431,7 @@ export class HtmlPreviewBuilder {
 
     if (window.mermaid) {
       try {
-        mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'strict' });
+        mermaid.initialize({ startOnLoad: true, theme: '${isLight ? 'default' : 'dark'}', securityLevel: 'strict' });
       } catch(e) {}
     }
   </script>

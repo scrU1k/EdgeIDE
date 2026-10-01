@@ -93,6 +93,14 @@ export class P2PEngine {
     this.mesh.registerPeerRelay(deviceId, relayUrl);
   }
 
+  /**
+   * Enable or disable internet relay (HiveMQ public MQTT broker fallback).
+   * When disabled, connections remain strictly confined to local Wi-Fi, hotspot, or optical QR.
+   */
+  public setInternetRelayAllowed(allowed: boolean): void {
+    this.mesh.setInternetRelayAllowed(allowed);
+  }
+
   private emit(ev: TransferEvent): void {
     for (const listener of this.eventListeners) {
       listener(ev);

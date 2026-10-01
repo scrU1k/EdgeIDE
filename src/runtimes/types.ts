@@ -29,5 +29,5 @@ export interface LanguageRuntime {
   supportedLanguages: SupportedLanguage[];
   isReady(): boolean;
   init?(onProgress?: (msg: string) => void): Promise<void>;
-  run(code: string, vfs: VirtualFileSystem, onOutput: (msg: ConsoleMessage) => void): Promise<ExecutionResult>;
+  run(code: string, vfs: VirtualFileSystem, onOutput: (msg: ConsoleMessage) => void, inputs?: string[]): Promise<ExecutionResult>;
 }

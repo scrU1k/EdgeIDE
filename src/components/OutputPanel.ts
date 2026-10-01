@@ -19,11 +19,15 @@ export class OutputPanel {
   private terminalTab: TerminalTab | null = null;
   private executionTimeMs: number | null = null;
   private currentHeightVh: number = 45;
-  private previewAllowNetwork: boolean = false;
+  private allowNetwork: boolean = true;
+  private onNetworkToggle?: (allowed: boolean) => void;
 
-  constructor(parent: HTMLElement, vfs: VirtualFileSystem, pythonRuntime?: PythonRuntime) {
+  constructor(parent: HTMLElement, vfs: VirtualFileSystem, pythonRuntime?: PythonRuntime, onNetworkToggle?: (allowed: boolean) => void) {
     this.vfs = vfs;
     this.pythonRuntime = pythonRuntime || new PythonRuntime();
+    this.onNetworkToggle = onNetworkToggle;
+    this.allowNetwork = localStorage.getItem('edgeide_allow_network') !== 'false';
+    this.pythonRuntime.setNetworkAllowed(this.allowNetwork);
 
     this.element = document.createElement('div');
     this.element.className = 'output-panel fixed bottom-0 left-0 right-0 z-30 bg-[#09090b] flex flex-col transition-transform duration-300 shadow-2xl transform translate-y-full select-none';
@@ -175,7 +179,12 @@ export class OutputPanel {
 
   public refreshPreview(): void {
     if (!this.iframeEl) return;
-    const htmlBundle = HtmlPreviewBuilder.buildBundle(this.vfs, undefined, this.previewAllowNetwork);
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const previewContent = this.element.querySelector('#previewTabContent') as HTMLElement;
+    if (previewContent) {
+      previewContent.style.background = isLight ? '#ffffff' : '#09090b';
+    }
+    const htmlBundle = HtmlPreviewBuilder.buildBundle(this.vfs, undefined, this.allowNetwork, isLight);
     this.iframeEl.srcdoc = htmlBundle;
   }
 
@@ -190,7 +199,7 @@ export class OutputPanel {
 
     const clearBtn = this.element.querySelector('#clearConsoleBtn') as HTMLElement;
     const refreshBtn = this.element.querySelector('#refreshPreviewBtn') as HTMLElement;
-    const toggleNetBtn = this.element.querySelector('#togglePreviewNetBtn') as HTMLElement;
+    const toggleNetBtn = this.element.querySelector('#toggleNetBtn') as HTMLElement;
     const netDot = this.element.querySelector('#netDotIndicator') as HTMLElement;
     const netText = this.element.querySelector('#netLabelText') as HTMLElement;
 
@@ -209,7 +218,19 @@ export class OutputPanel {
     previewContent?.classList.add('hidden');
     clearBtn?.classList.add('hidden');
     refreshBtn?.classList.add('hidden');
-    toggleNetBtn?.classList.add('hidden');
+
+    // Update global network indicator for all tabs
+    if (netDot && netText && toggleNetBtn) {
+      if (this.allowNetwork) {
+        netDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+        netText.textContent = 'Net: On';
+        toggleNetBtn.title = 'Network Access: Allowed across Console, Terminal, and Preview (Click to Block)';
+      } else {
+        netDot.className = 'w-1.5 h-1.5 rounded-full bg-red-400';
+        netText.textContent = 'Net: Off';
+        toggleNetBtn.title = 'Network Access: Blocked across Console, Terminal, and Preview (Click to Allow)';
+      }
+    }
 
     if (this.activeTab === 'console') {
       if (consoleBtn) {
@@ -239,18 +260,6 @@ export class OutputPanel {
       }
       previewContent?.classList.remove('hidden');
       refreshBtn?.classList.remove('hidden');
-      toggleNetBtn?.classList.remove('hidden');
-      if (netDot && netText) {
-        if (this.previewAllowNetwork) {
-          netDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
-          netText.textContent = 'Net: On';
-          toggleNetBtn.title = 'Preview Network: Allowed (Click to Block)';
-        } else {
-          netDot.className = 'w-1.5 h-1.5 rounded-full bg-red-400';
-          netText.textContent = 'Net: Off';
-          toggleNetBtn.title = 'Preview Network: Blocked (Click to Allow)';
-        }
-      }
       this.refreshPreview();
     }
   }
@@ -285,10 +294,10 @@ export class OutputPanel {
             </svg>
           </button>
 
-          <!-- Toggle Network Access for Preview -->
-          <button id="togglePreviewNetBtn" title="Preview Network: Blocked (Click to Allow)" class="px-2 py-1 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-400 hover:text-zinc-200 text-[11px] font-mono transition-all hidden flex items-center gap-1 border border-white/10">
-            <span class="w-1.5 h-1.5 rounded-full bg-red-400" id="netDotIndicator"></span>
-            <span id="netLabelText">Net: Off</span>
+          <!-- Toggle Network Access for all tabs -->
+          <button id="toggleNetBtn" title="Network Access: Allowed across Console, Terminal, and Preview (Click to Block)" class="px-2 py-1 rounded-lg hover:bg-white/5 active:scale-95 text-zinc-300 hover:text-zinc-100 text-[11px] font-mono transition-all flex items-center gap-1.5 border border-white/10 shrink-0">
+            <span class="w-1.5 h-1.5 rounded-full ${this.allowNetwork ? 'bg-emerald-400' : 'bg-red-400'}" id="netDotIndicator"></span>
+            <span id="netLabelText">${this.allowNetwork ? 'Net: On' : 'Net: Off'}</span>
           </button>
 
           <!-- Refresh Preview Button -->
@@ -347,7 +356,7 @@ export class OutputPanel {
         </div>
 
         <!-- Preview View -->
-        <div id="previewTabContent" class="h-full w-full hidden bg-white">
+        <div id="previewTabContent" class="h-full w-full hidden">
           <iframe id="previewIframe" class="w-full h-full border-none" sandbox="allow-scripts allow-modals"></iframe>
         </div>
       </div>
@@ -404,10 +413,18 @@ export class OutputPanel {
 
     refreshPreviewBtn?.addEventListener('click', () => this.refreshPreview());
 
-    const togglePreviewNetBtn = this.element.querySelector('#togglePreviewNetBtn');
-    togglePreviewNetBtn?.addEventListener('click', () => {
-      this.previewAllowNetwork = !this.previewAllowNetwork;
+    const toggleNetBtn = this.element.querySelector('#toggleNetBtn');
+    toggleNetBtn?.addEventListener('click', () => {
+      this.allowNetwork = !this.allowNetwork;
+      localStorage.setItem('edgeide_allow_network', String(this.allowNetwork));
+      this.pythonRuntime.setNetworkAllowed(this.allowNetwork);
+      if (this.onNetworkToggle) {
+        this.onNetworkToggle(this.allowNetwork);
+      }
       this.updateTabVisibility();
+      if (this.activeTab === 'preview') {
+        this.refreshPreview();
+      }
     });
 
     copyOutputBtn?.addEventListener('click', async () => {

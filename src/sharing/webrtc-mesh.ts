@@ -113,6 +113,7 @@ export class WebRTCMesh {
   private broadcastChannel: BroadcastChannel;
   private crypto: MeshCrypto;
   private cryptoInitPromise: Promise<void>;
+  private internetRelayAllowed: boolean = true;
 
   constructor(myDeviceId: string, onMessage: (msg: WebRTCMessage) => void) {
     this.myDeviceId = myDeviceId;
@@ -122,6 +123,11 @@ export class WebRTCMesh {
     this.crypto = new MeshCrypto();
     this.cryptoInitPromise = this.crypto.init();
 
+    // Check if network is disabled globally
+    if (typeof localStorage !== 'undefined') {
+      this.internetRelayAllowed = localStorage.getItem('edgeide_allow_network') !== 'false';
+    }
+
     this.broadcastChannel.onmessage = (e) => {
       if (e.data && e.data.senderId !== this.myDeviceId) {
         this.onMessageCallback(e.data);
@@ -129,7 +135,33 @@ export class WebRTCMesh {
     };
 
     this.initLocalLanRelay();
-    this.initMqttRelay();
+    if (this.internetRelayAllowed) {
+      this.initMqttRelay();
+    }
+  }
+
+  public setInternetRelayAllowed(allowed: boolean): void {
+    this.internetRelayAllowed = allowed;
+    if (!allowed) {
+      if (this.reconnectTimer !== null) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      if (this.pingTimer !== null) {
+        clearInterval(this.pingTimer);
+        this.pingTimer = null;
+      }
+      if (this.mqttWs) {
+        try { this.mqttWs.close(); } catch {}
+        this.mqttWs = null;
+      }
+      console.log('[P2P] Internet MQTT relay disconnected. Strict local/hotspot offline mode active.');
+    } else {
+      if (!this.mqttWs && !this.isDestroyed) {
+        console.log('[P2P] Internet MQTT relay allowed. Connecting...');
+        this.initMqttRelay();
+      }
+    }
   }
 
   private initLocalLanRelay(): void {
@@ -368,10 +400,12 @@ export class WebRTCMesh {
       }).catch(() => { /* silent */ });
     } catch { /* silent */ }
 
-    try {
-      const targetTopic = msg.targetId ? `edgeide/p2p/v1/dev/${msg.targetId}` : MQTT_DISCOVERY_TOPIC;
-      this.sendMqttPublish(targetTopic, payload);
-    } catch { /* silent */ }
+    if (this.internetRelayAllowed) {
+      try {
+        const targetTopic = msg.targetId ? `edgeide/p2p/v1/dev/${msg.targetId}` : MQTT_DISCOVERY_TOPIC;
+        this.sendMqttPublish(targetTopic, payload);
+      } catch { /* silent */ }
+    }
   }
 
   public destroy(): void {

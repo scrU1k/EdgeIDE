@@ -205,7 +205,14 @@ class MobileApp {
     this.accessoryBar = new AccessoryBar(this.appRoot, this.editor);
 
     // 12. Output Panel (Console + Terminal + Web Preview with drag resize)
-    this.outputPanel = new OutputPanel(document.body, this.vfs, this.runtimeManager.getPythonRuntime());
+    this.outputPanel = new OutputPanel(
+      document.body, 
+      this.vfs, 
+      this.runtimeManager.getPythonRuntime(),
+      (allowed) => {
+        this.p2pEngine.setInternetRelayAllowed(allowed);
+      }
+    );
   }
 
   private switchFile(fileId: string): void {
@@ -261,13 +268,32 @@ class MobileApp {
       return;
     }
 
+    let inputs: string[] = [];
+    if (activeFile.language === 'python' && activeFile.content.includes('input(')) {
+      const regex = /input\s*\(\s*(?:['"`](.*?)['"`])?\s*\)/g;
+      let match;
+      while ((match = regex.exec(activeFile.content)) !== null) {
+        const promptText = match[1] || 'Enter input for program:';
+        const val = await AppDialog.prompt({
+          title: 'Program Input Required',
+          placeholder: promptText,
+          confirmText: 'Submit'
+        });
+        if (val === null) {
+          return;
+        }
+        inputs.push(val);
+      }
+    }
+
     this.outputPanel.open('console');
     this.outputPanel.clearConsole();
 
     try {
       const result = await this.runtimeManager.executeActiveFile(
         this.vfs,
-        (msg) => this.outputPanel.addMessage(msg)
+        (msg) => this.outputPanel.addMessage(msg),
+        inputs
       );
 
       this.outputPanel.setExecutionTime(result.executionTimeMs);
@@ -286,6 +312,24 @@ class MobileApp {
     const activeFile = this.vfs.getActiveFile();
     const language = activeFile?.language || 'python';
 
+    let inputs: string[] = [];
+    if (language === 'python' && selectedText.includes('input(')) {
+      const regex = /input\s*\(\s*(?:['"`](.*?)['"`])?\s*\)/g;
+      let match;
+      while ((match = regex.exec(selectedText)) !== null) {
+        const promptText = match[1] || 'Enter input for program:';
+        const val = await AppDialog.prompt({
+          title: 'Program Input Required',
+          placeholder: promptText,
+          confirmText: 'Submit'
+        });
+        if (val === null) {
+          return;
+        }
+        inputs.push(val);
+      }
+    }
+
     this.outputPanel.open('console');
     this.outputPanel.clearConsole();
     this.outputPanel.addMessage({
@@ -300,7 +344,8 @@ class MobileApp {
         selectedText,
         language,
         this.vfs,
-        (msg) => this.outputPanel.addMessage(msg)
+        (msg) => this.outputPanel.addMessage(msg),
+        inputs
       );
       this.outputPanel.setExecutionTime(result.executionTimeMs);
     } catch (e: any) {
@@ -328,6 +373,7 @@ class MobileApp {
     this.settingsStore.subscribe((s) => {
       this.editor.updateSettings(s);
       document.documentElement.setAttribute('data-theme', s.themeMode);
+      this.outputPanel.refreshPreview();
     });
 
     // VFS active file listener to update editor when active file changes externally (e.g. tab closed)

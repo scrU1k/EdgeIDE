@@ -9,6 +9,7 @@ import { VirtualFileSystem } from '../vfs/vfs';
 import { PythonRuntime } from '../runtimes/python-runtime';
 import { AppSettings, SettingsStore } from '../settings/settings-store';
 import { getCodeThemeExtensions } from '../editor/themes';
+import { AppDialog } from '../components/AppDialog';
 import {
   NotebookData,
   NotebookCell,
@@ -576,6 +577,27 @@ export class NotebookEditor {
     const stdoutBuf: string[] = [];
     const stderrBuf: string[] = [];
 
+    const inputs: string[] = [];
+    if (cell.source.includes('input(')) {
+      const regex = /input\s*\(\s*(?:['"`](.*?)['"`])?\s*\)/g;
+      let match;
+      while ((match = regex.exec(cell.source)) !== null) {
+        const promptText = match[1] || 'Enter input for cell:';
+        const val = await AppDialog.prompt({
+          title: 'Cell Input Required',
+          placeholder: promptText,
+          confirmText: 'Submit'
+        });
+        if (val === null) {
+          this.runningCellId = null;
+          this.renderToolbar();
+          this.renderAll();
+          return;
+        }
+        inputs.push(val);
+      }
+    }
+
     try {
       const result = await this.pythonRuntime.runStreaming(
         cell.source,
@@ -585,7 +607,8 @@ export class NotebookEditor {
         },
         (err) => {
           stderrBuf.push(err);
-        }
+        },
+        inputs
       );
 
       if (stdoutBuf.length > 0) {

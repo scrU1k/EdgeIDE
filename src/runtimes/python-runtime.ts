@@ -5,6 +5,8 @@ const PYODIDE_WORKER_SCRIPT = `
 let pyodide = null;
 let initPromise = null;
 let installedPackages = new Set(['micropip', 'packaging']);
+let stdinQueue = [];
+let networkAllowed = true;
 
 // Sandbox lockdown: Prevent exfiltration and origin storage access via Pyodide JS interop
 const restrictedKeys = ['indexedDB', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'caches', 'Worker', 'SharedWorker'];
@@ -18,18 +20,21 @@ for (const key of restrictedKeys) {
 }
 
 // Proxy fetch to only allow Pyodide and PyPI downloads using strict hostname matching.
-// Finding 2: startsWith was vulnerable to subdomains like 'cdn.jsdelivr.net.attacker.example'.
 const originalFetch = self.fetch;
 Object.defineProperty(self, 'fetch', {
   value: async function(url, options) {
+    if (!networkAllowed) {
+      throw new Error('Network access is disabled (Net: Off). Toggle "Net: On" in the panel toolbar to allow network requests.');
+    }
     const urlStr = String(url);
     let allowed = false;
     try {
       const parsed = new URL(urlStr);
       const h = parsed.hostname.toLowerCase();
-      // Strict hostname equality — no prefix tricks possible.
+      // Allow local app origin (bundled offline Pyodide / assets) as well as safe external CDNs
+      const isLocal = self.location && parsed.origin === self.location.origin;
       const allowedHosts = ['cdn.jsdelivr.net', 'pypi.org', 'files.pythonhosted.org'];
-      if (allowedHosts.includes(h)) {
+      if (isLocal || allowedHosts.includes(h)) {
         // Only allow safe read-only methods to prevent outbound data exfiltration.
         const method = ((options && options.method) || 'GET').toUpperCase();
         if (method === 'GET' || method === 'HEAD') {
@@ -38,7 +43,7 @@ Object.defineProperty(self, 'fetch', {
       }
     } catch {}
     if (!allowed) {
-      throw new Error('Security Exception: fetch is restricted to PyPI and jsdelivr CDN (GET/HEAD only) in this sandbox.');
+      throw new Error('Security Exception: fetch is restricted to local offline assets, PyPI, and jsDelivr CDN (GET/HEAD only) in this sandbox.');
     }
     return originalFetch.apply(this, arguments);
   },
@@ -52,26 +57,60 @@ async function getPyodide() {
 
   initPromise = (async () => {
     postMessage({ type: 'msg', msgType: 'system', text: 'Loading Pyodide CPython WebAssembly engine...' });
-    try {
-      importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js");
-      
-      pyodide = await loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/"
-      });
-    } catch (netErr) {
-      initPromise = null;
-      throw new Error('Failed to load Pyodide WebAssembly from CDN. An active internet connection is required on initial load: ' + (netErr && netErr.message ? netErr.message : netErr));
+    
+    // 1. First attempt to load bundled offline Pyodide assets if available
+    let loadedOffline = false;
+    if (typeof self !== 'undefined' && self.location && self.location.origin) {
+      const localBase = self.location.origin + '/pyodide/';
+      try {
+        importScripts(localBase + 'pyodide.js');
+        pyodide = await loadPyodide({
+          indexURL: localBase
+        });
+        loadedOffline = true;
+      } catch (localErr) {
+        // Local bundled assets not present; fall back to CDN
+      }
     }
 
+    // 2. If not bundled locally, load from CDN
+    if (!loadedOffline) {
+      try {
+        importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js");
+        
+        pyodide = await loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/"
+        });
+      } catch (netErr) {
+        initPromise = null;
+        throw new Error('Failed to load Pyodide WebAssembly. If offline, bundle Pyodide assets locally or enable "Net: On" for the initial load: ' + (netErr && netErr.message ? netErr.message : netErr));
+      }
+    }
+
+    // Configure standard output
     pyodide.setStdout({
       batched: (text) => {
         postMessage({ type: 'msg', msgType: 'stdout', text });
       }
     });
 
+    // Configure standard error
     pyodide.setStderr({
       batched: (text) => {
         postMessage({ type: 'msg', msgType: 'stderr', text });
+      }
+    });
+
+    // Configure standard input to resolve OSError [Errno 29] I/O error on input()
+    pyodide.setStdin({
+      isatty: true,
+      stdin: () => {
+        if (stdinQueue.length > 0) {
+          const val = stdinQueue.shift();
+          postMessage({ type: 'msg', msgType: 'stdout', text: val });
+          return val + '\\n';
+        }
+        return '\\n';
       }
     });
 
@@ -83,12 +122,27 @@ async function getPyodide() {
 }
 
 onmessage = async (e) => {
-  const { type, code, files, packages } = e.data;
+  const { type, code, files, packages, inputs, allowed } = e.data;
+
+  if (type === 'set_network') {
+    networkAllowed = !!allowed;
+    return;
+  }
+
+  if (type === 'stdin_input') {
+    if (e.data.value !== undefined) {
+      stdinQueue.push(String(e.data.value));
+    }
+    return;
+  }
 
   if (type === 'run') {
     const startTime = performance.now();
     try {
       const py = await getPyodide();
+
+      // Setup inputs queue for this execution
+      stdinQueue = Array.isArray(inputs) ? [...inputs] : [];
 
       // Sync files into Pyodide virtual filesystem
       if (files && Array.isArray(files)) {
@@ -129,20 +183,51 @@ onmessage = async (e) => {
   } else if (type === 'pip_install') {
     try {
       const py = await getPyodide();
-      await py.loadPackage('micropip');
-      const micropip = py.pyimport('micropip');
       for (const pkg of (packages || [])) {
-        postMessage({ type: 'pip_log', text: 'Installing ' + pkg + '...' });
-        await micropip.install(pkg);
-        installedPackages.add(pkg);
-        postMessage({ type: 'pip_log', text: 'Successfully installed ' + pkg });
+        const cleanPkg = String(pkg).trim().toLowerCase();
+        postMessage({ type: 'pip_log', text: 'Collecting ' + cleanPkg + '...' });
+
+        let loaded = false;
+        // 1. First attempt: Load pre-compiled WASM package from Pyodide CDN (matplotlib, numpy, scipy, pandas, sympy, etc.)
+        try {
+          await py.loadPackage(cleanPkg, {
+            messageCallback: (msg) => postMessage({ type: 'pip_log', text: String(msg) }),
+            errorCallback: (err) => postMessage({ type: 'pip_log', text: String(err) })
+          });
+          installedPackages.add(cleanPkg);
+          loaded = true;
+          postMessage({ type: 'pip_log', text: 'Successfully installed ' + cleanPkg + ' (Pyodide WASM)' });
+        } catch (wasmErr) {
+          // If not in Pyodide built-in distribution, fallback to micropip from PyPI
+        }
+
+        // 2. Second attempt: micropip for pure Python wheels on PyPI
+        if (!loaded) {
+          try {
+            await py.loadPackage('micropip');
+            const micropip = py.pyimport('micropip');
+            postMessage({ type: 'pip_log', text: 'Searching PyPI for ' + cleanPkg + '...' });
+            await micropip.install(cleanPkg);
+            installedPackages.add(cleanPkg);
+            postMessage({ type: 'pip_log', text: 'Successfully installed ' + cleanPkg + ' from PyPI' });
+            loaded = true;
+          } catch (pipErr) {
+            throw new Error('Could not install ' + cleanPkg + ': ' + (pipErr && pipErr.message ? pipErr.message : pipErr));
+          }
+        }
       }
       postMessage({ type: 'pip_done', success: true });
     } catch(err) {
       postMessage({ type: 'pip_done', success: false, error: err?.message || String(err) });
     }
   } else if (type === 'pip_list') {
-    postMessage({ type: 'pip_list_res', packages: Array.from(installedPackages) });
+    let allPkgs = Array.from(installedPackages);
+    if (pyodide && pyodide.loadedPackages) {
+      for (const k of Object.keys(pyodide.loadedPackages)) {
+        if (!allPkgs.includes(k)) allPkgs.push(k);
+      }
+    }
+    postMessage({ type: 'pip_list_res', packages: allPkgs.sort() });
   }
 };
 `;
@@ -154,9 +239,21 @@ export class PythonRuntime implements LanguageRuntime {
 
   private worker: Worker | null = null;
   private currentReject: ((reason?: any) => void) | null = null;
+  private networkAllowed: boolean = true;
 
   public isReady(): boolean {
     return this.worker !== null;
+  }
+
+  public setNetworkAllowed(allowed: boolean): void {
+    this.networkAllowed = allowed;
+    if (this.worker) {
+      this.worker.postMessage({ type: 'set_network', allowed });
+    }
+  }
+
+  public isNetworkAllowed(): boolean {
+    return this.networkAllowed;
   }
 
   private ensureWorker(): Worker {
@@ -165,6 +262,8 @@ export class PythonRuntime implements LanguageRuntime {
       const blobUrl = URL.createObjectURL(blob);
       this.worker = new Worker(blobUrl);
       URL.revokeObjectURL(blobUrl);
+      // Synchronize current network allowed state with new worker
+      this.worker.postMessage({ type: 'set_network', allowed: this.networkAllowed });
     }
     return this.worker;
   }
@@ -183,7 +282,8 @@ export class PythonRuntime implements LanguageRuntime {
   public async run(
     code: string, 
     vfs: VirtualFileSystem, 
-    onOutput: (msg: ConsoleMessage) => void
+    onOutput: (msg: ConsoleMessage) => void,
+    inputs?: string[]
   ): Promise<ExecutionResult> {
     const outputs: ConsoleMessage[] = [];
     const pushMsg = (type: ConsoleMessage['type'], text: string) => {
@@ -239,7 +339,8 @@ export class PythonRuntime implements LanguageRuntime {
       worker.postMessage({
         type: 'run',
         code,
-        files: allFiles
+        files: allFiles,
+        inputs: inputs || []
       });
     });
   }
@@ -248,7 +349,8 @@ export class PythonRuntime implements LanguageRuntime {
     code: string,
     vfs: VirtualFileSystem,
     onStdout: (out: string) => void,
-    onStderr: (err: string) => void
+    onStderr: (err: string) => void,
+    inputs?: string[]
   ): Promise<string | null> {
     const worker = this.ensureWorker();
 
@@ -282,7 +384,8 @@ export class PythonRuntime implements LanguageRuntime {
       worker.postMessage({
         type: 'run',
         code,
-        files: allFiles
+        files: allFiles,
+        inputs: inputs || []
       });
     });
   }
@@ -296,6 +399,8 @@ export class PythonRuntime implements LanguageRuntime {
         if (!data) return;
 
         if (data.type === 'pip_log') {
+          onLog(data.text);
+        } else if (data.type === 'msg') {
           onLog(data.text);
         } else if (data.type === 'pip_done') {
           worker.removeEventListener('message', handleMessage);

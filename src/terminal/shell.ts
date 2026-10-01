@@ -3,6 +3,7 @@ import { PythonRuntime } from '../runtimes/python-runtime';
 import { JavaScriptRuntime } from '../runtimes/js-runtime';
 import { GitAdapter } from './git-adapter';
 import { NativeHostBridge } from '../runtimes/native-host-bridge';
+import { AppDialog } from '../components/AppDialog';
 
 export class VirtualShell {
   private vfs: VirtualFileSystem;
@@ -318,10 +319,21 @@ export class VirtualShell {
         if (sub === 'install') {
           const pkgs = cmdArgs.slice(1);
           if (pkgs.length === 0) {
-            write('pip: missing package names to install (e.g. pip install sympy)\r\n');
+            write('pip: missing package names to install (e.g. pip install matplotlib)\r\n');
             return;
           }
-          await this.pythonRuntime.pipInstall(pkgs, (log) => write(log + '\r\n'));
+          if (!this.pythonRuntime.isNetworkAllowed()) {
+            write('\x1b[33mWarning: Network access is currently disabled (Net: Off).\x1b[0m\r\n');
+            write('\x1b[33mClick "Net: Off" in the panel header to toggle "Net: On" before installing packages.\x1b[0m\r\n');
+            return;
+          }
+          write(`\x1b[90m[pip] Collecting and installing ${pkgs.join(', ')}...\x1b[0m\r\n`);
+          try {
+            await this.pythonRuntime.pipInstall(pkgs, (log) => write(`\x1b[36m${log}\x1b[0m\r\n`));
+            write('\x1b[32mInstallation complete.\x1b[0m\r\n');
+          } catch (err: any) {
+            write(`\x1b[31mpip error: ${err.message || String(err)}\x1b[0m\r\n`);
+          }
         } else if (sub === 'list') {
           const pkgs = await this.pythonRuntime.pipList();
           write(`\x1b[1;36mInstalled Packages (${pkgs.length}):\x1b[0m\r\n`);
@@ -354,13 +366,33 @@ export class VirtualShell {
           return;
         }
 
+        const inputs: string[] = [];
+        if (file.content.includes('input(')) {
+          const regex = /input\s*\(\s*(?:['"`](.*?)['"`])?\s*\)/g;
+          let match;
+          while ((match = regex.exec(file.content)) !== null) {
+            const promptStr = match[1] || 'Enter input:';
+            const val = await AppDialog.prompt({
+              title: 'Program Input Required',
+              placeholder: promptStr,
+              confirmText: 'Submit'
+            });
+            inputs.push(val || '');
+          }
+        }
+
         write(`\x1b[90m[Running ${file.name}...]\x1b[0m\r\n`);
-        await this.pythonRuntime.runStreaming(
-          file.content,
-          this.vfs,
-          (out) => write(out),
-          (err) => write(`\x1b[31m${err}\x1b[0m\r\n`)
-        );
+        try {
+          await this.pythonRuntime.runStreaming(
+            file.content,
+            this.vfs,
+            (out) => write(out),
+            (err) => write(`\x1b[31m${err}\x1b[0m\r\n`),
+            inputs
+          );
+        } catch (err: any) {
+          write(`\x1b[31m${err.message || String(err)}\x1b[0m\r\n`);
+        }
         break;
       }
 
